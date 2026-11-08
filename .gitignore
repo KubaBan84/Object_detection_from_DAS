@@ -1,0 +1,28 @@
+# Data (large, not versioned) - see data/README.md
+data/*.rar
+data/*.zip
+data/real/*
+data/synthetic/*
+!data/real/.gitkeep
+!data/synthetic/.gitkeep
+
+# Generated outputs
+outputs/figures/*
+outputs/results/*
+outputs/cache/*
+!outputs/**/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# IDE / OS
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
