@@ -1,4 +1,4 @@
-"""Velocity computation and unit conversion (plan: Etap 8)."""
+"""Velocity computation and unit conversion (plan: Stage 8)."""
 from __future__ import annotations
 
 import numpy as np

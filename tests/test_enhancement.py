@@ -1,4 +1,4 @@
-"""f-k fan filter keeps a synthetic line with v in range and removes a line outside the range / horizontal stripe (Etap 5)."""
+"""f-k fan filter keeps a synthetic line with v in range and removes a line outside the range / horizontal stripe (Stage 5)."""
 import pytest
 
 

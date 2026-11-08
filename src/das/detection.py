@@ -1,4 +1,4 @@
-"""Line detection: strong (thick) path and weak (thin) path (plan: Etap 6)."""
+"""Line detection: strong (thick) path and weak (thin) path (plan: Stage 6)."""
 from __future__ import annotations
 
 from dataclasses import dataclass

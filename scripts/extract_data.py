@@ -1,6 +1,6 @@
 """Extract data/20240507.rar -> data/real and Synthetic Dataset.zip -> data/synthetic; verify file counts and shapes.
 
-Plan: Etap 0.
+Plan: Stage 0.
 """
 from __future__ import annotations
 

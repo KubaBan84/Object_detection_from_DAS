@@ -1,4 +1,4 @@
-"""Ridge tracking of each object and velocity-over-time profile (plan: Etap 9, extra 1)."""
+"""Ridge tracking of each object and velocity-over-time profile (plan: Stage 9, extra 1)."""
 from __future__ import annotations
 
 import numpy as np

@@ -1,6 +1,6 @@
 """Grid search / ablation of key parameters on synthetic + annotated real segments; writes outputs/results/tuning.csv.
 
-Plan: Etap 13.
+Plan: Stage 13.
 """
 from __future__ import annotations
 

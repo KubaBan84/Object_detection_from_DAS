@@ -1,4 +1,4 @@
-"""Global constants, paths, analysed segments and algorithm parameters (plan: Etap 1).
+"""Global constants, paths, analysed segments and algorithm parameters (plan: Stage 1).
 
 All tunable parameters live in dataclasses so that every experiment can be described
 by a single PipelineParams object (saved together with the results).
@@ -39,8 +39,8 @@ SEGMENTS: list[dict] = [
 
 @dataclass
 class PreprocessingParams:
-    f_low: float = 1.0                # [Hz] band-pass lower cut-off (set from Etap 3)
-    f_high: float = 50.0              # [Hz] band-pass upper cut-off (set from Etap 3)
+    f_low: float = 1.0                # [Hz] band-pass lower cut-off (set from Stage 3)
+    f_high: float = 50.0              # [Hz] band-pass upper cut-off (set from Stage 3)
     taper_hz: float = 0.5             # width of the raised-cosine transition band
     common_mode: str = "median"       # "median" | "mean" | "none"
     time_decimation: int = 25         # 0.0016 s * 25 = 0.04 s per image row

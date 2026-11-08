@@ -1,4 +1,4 @@
-"""Continuity detection, segment concatenation, timestamp parsing (Etap 1)."""
+"""Continuity detection, segment concatenation, timestamp parsing (Stage 1)."""
 import pytest
 
 

@@ -1,6 +1,6 @@
 """Run the full detection pipeline on configured 2-minute segments (or a synthetic sample) and save figures + CSV/JSON.
 
-Plan: Etap 12.
+Plan: Stage 12.
 """
 from __future__ import annotations
 

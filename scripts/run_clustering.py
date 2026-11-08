@@ -1,6 +1,6 @@
 """Collect features of all detected objects, choose k (silhouette), cluster with cv2.kmeans, plot PCA + cluster galleries.
 
-Plan: Etap 10.
+Plan: Stage 10.
 """
 from __future__ import annotations
 

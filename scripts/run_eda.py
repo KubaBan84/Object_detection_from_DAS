@@ -1,6 +1,6 @@
 """Exploratory data analysis: global streaming statistics over all 259 files + per-segment statistics and figures.
 
-Plan: Etap 2.
+Plan: Stage 2.
 """
 from __future__ import annotations
 

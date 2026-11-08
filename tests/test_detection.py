@@ -1,4 +1,4 @@
-"""Synthetic image with one thick and one thin line + noise -> both detected with correct direction (Etap 6)."""
+"""Synthetic image with one thick and one thin line + noise -> both detected with correct direction (Stage 6)."""
 import pytest
 
 

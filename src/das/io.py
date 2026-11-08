@@ -1,4 +1,4 @@
-"""Data loading: real files, continuous segments, synthetic samples (plan: Etap 1)."""
+"""Data loading: real files, continuous segments, synthetic samples (plan: Stage 1)."""
 from __future__ import annotations
 
 from datetime import datetime

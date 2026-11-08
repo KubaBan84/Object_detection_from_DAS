@@ -1,4 +1,4 @@
-"""Per-object descriptors used for clustering (plan: Etap 10, extra 2)."""
+"""Per-object descriptors used for clustering (plan: Stage 10, extra 2)."""
 from __future__ import annotations
 
 import numpy as np

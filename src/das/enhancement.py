@@ -1,4 +1,4 @@
-"""Enhancement of slanted lines and suppression of everything else (plan: Etap 5)."""
+"""Enhancement of slanted lines and suppression of everything else (plan: Stage 5)."""
 from __future__ import annotations
 
 import numpy as np

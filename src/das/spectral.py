@@ -1,4 +1,4 @@
-"""Frequency analysis: per-channel FFT, Welch PSD, STFT, f-k spectrum (plan: Etap 3).
+"""Frequency analysis: per-channel FFT, Welch PSD, STFT, f-k spectrum (plan: Stage 3).
 
 Implemented with numpy.fft only (scipy is not on the allowed library list).
 """

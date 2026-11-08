@@ -1,4 +1,4 @@
-"""Clustering of detected objects (plan: Etap 10, extra 2). cv2.kmeans + numpy metrics."""
+"""Clustering of detected objects (plan: Stage 10, extra 2). cv2.kmeans + numpy metrics."""
 from __future__ import annotations
 
 import numpy as np

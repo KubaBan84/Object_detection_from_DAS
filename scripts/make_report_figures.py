@@ -1,6 +1,6 @@
 """Regenerate every figure used in report/ (scaled down) into report/figures/.
 
-Plan: Etap 14.
+Plan: Stage 14.
 """
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Silhouette on separable blobs, kmeans label count, PCA shape (Etap 10)."""
+"""Silhouette on separable blobs, kmeans label count, PCA shape (Stage 10)."""
 import pytest
 
 

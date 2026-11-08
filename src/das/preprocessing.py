@@ -1,4 +1,4 @@
-"""Noise removal and conversion of the raw signal into an energy image (plan: Etap 4)."""
+"""Noise removal and conversion of the raw signal into an energy image (plan: Stage 4)."""
 from __future__ import annotations
 
 import numpy as np

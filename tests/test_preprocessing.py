@@ -1,4 +1,4 @@
-"""Band-pass keeps in-band sinusoid / removes out-of-band; common-mode removal; RMS decimation shape (Etap 4)."""
+"""Band-pass keeps in-band sinusoid / removes out-of-band; common-mode removal; RMS decimation shape (Stage 4)."""
 import pytest
 
 

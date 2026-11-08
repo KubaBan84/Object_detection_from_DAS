@@ -1,6 +1,6 @@
 """Evaluate detections against synthetic ground truth (precision/recall/F1 per vehicle type, velocity errors).
 
-Plan: Etap 11.
+Plan: Stage 11.
 """
 from __future__ import annotations
 

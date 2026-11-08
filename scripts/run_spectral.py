@@ -1,6 +1,6 @@
 """Frequency analysis: per-channel FFT, Welch PSD, STFT of chosen channels, f-k spectrum, band energies.
 
-Plan: Etap 3.
+Plan: Stage 3.
 """
 from __future__ import annotations
 

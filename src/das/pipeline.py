@@ -1,4 +1,4 @@
-"""End-to-end pipeline: raw (time, space) matrix -> detected objects (plan: Etap 12)."""
+"""End-to-end pipeline: raw (time, space) matrix -> detected objects (plan: Stage 12)."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field

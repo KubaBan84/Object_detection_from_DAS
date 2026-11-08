@@ -1,546 +1,546 @@
-# Plan implementacji – Detecting Moving Objects in DAS Recordings (wersja na ocenę 5)
+# Implementation plan – Detecting Moving Objects in DAS Recordings (grade 5 version)
 
-> Termin oddania kodu i raportu: **22.11.2026, 23:59**. Prezentacja: **26.11.2026 / 01.12.2026**.
-> Plan obejmuje pełny zakres oceny 5: dane rzeczywiste, wykrywanie **grubych i cienkich linii**, prędkości.
-> Obejmuje też oba punkty dodatkowe: **wykres v(t)** i **klasteryzację obiektów**.
+> Code and report deadline: **22.11.2026, 23:59**. Presentation: **26.11.2026 / 01.12.2026**.
+> The plan covers the full grade-5 scope: real data, detection of **thick and thin lines**, and velocities.
+> It also covers both extra points: the **v(t) plot** and **clustering of objects**.
 
 ---
 
-## 0. Wymagania na 5 i gdzie są realizowane
+## 0. Grade-5 requirements and where they are implemented
 
-| # | Wymaganie z treści projektu | Etap | Moduł / plik |
+| # | Requirement from the project brief | Stage | Module / file |
 |---|---|---|---|
-| 1 | Wczytanie **danych rzeczywistych**; 3 ciągłe segmenty po 2 min | 1 | `das/io.py`, `config.SEGMENTS` |
-| 2 | Analiza eksploracyjna: statystyki, rozkłady, zmienność w czasie i przestrzeni | 2 | `das/stats.py`, `scripts/run_eda.py` |
-| 3 | Analiza częstotliwościowa: **FFT niezależnie dla każdego kanału**, STFT | 3 | `das/spectral.py`, `scripts/run_spectral.py` |
-| 4 | Filtracja szumu: pasmo, downsampling, filtry, standaryzacja | 4 | `das/preprocessing.py` |
-| 5 | Przetworzenie tak, aby widoczne były **tylko poruszające się obiekty** | 5 | `das/enhancement.py` |
-| 6 | Wykrycie linii **grubych (tramwaj/ciężarówka)** | 6A | `das/detection.py` |
-| 7 | Wykrycie linii **cienkich, słabych (samochody)** – **warunek oceny 5** | 6B | `das/detection.py` |
-| 8 | Grupowanie kandydatów i uśrednianie linii w grupie | 7 | `das/grouping.py` |
-| 9 | Prędkość każdego obiektu (km/h, kierunek) | 8 | `das/velocity.py` |
-| 10 | (Extra 1) wykres **zmiany prędkości w czasie** | 9 | `das/tracking.py` |
-| 11 | (Extra 2) **klasteryzacja** obiektów (gruba/cienka, stała/zmienna prędkość, kształt) | 10 | `das/features.py`, `das/clustering.py` |
-| 12 | Ocena liczby i dokładności wykrytych obiektów | 11 | `das/evaluation.py` |
-| 13 | Schemat blokowy algorytmu z opisem kroków | 14 | `docs/flowchart.md` → `report/figures/flowchart.png` |
-| 14 | Wizualizacje „przed/po” dla każdego kroku, także usuniętego szumu | 4–6, 14 | `das/visualization.py` |
-| 15 | Wyniki szczegółowe dla 3 segmentów 2-min | 12 | `scripts/run_pipeline.py` |
-| 16 | Opis eksperymentów (udanych i nieudanych), błędów i ograniczeń | 13 | `docs/experiments_log.md` |
-| 17 | Źródła danych, kodu i inspiracji | 14 | `docs/references.md` |
-| 18 | Kod bez błędów i ostrzeżeń, wektoryzacja, czytelność | całość | `tests/`, `pyproject.toml` (`filterwarnings=error`) |
+| 1 | Load **real data**; 3 continuous 2-min segments | 1 | `das/io.py`, `config.SEGMENTS` |
+| 2 | Exploratory analysis: statistics, distributions, variability in time and space | 2 | `das/stats.py`, `scripts/run_eda.py` |
+| 3 | Frequency analysis: **FFT applied independently to each channel**, STFT | 3 | `das/spectral.py`, `scripts/run_spectral.py` |
+| 4 | Noise filtering: frequency band, downsampling, filters, standardization | 4 | `das/preprocessing.py` |
+| 5 | Processing so that **only moving objects** are visible | 5 | `das/enhancement.py` |
+| 6 | Detection of **thick lines (tram/truck)** | 6A | `das/detection.py` |
+| 7 | Detection of **thin, weak lines (cars)** – **grade-5 condition** | 6B | `das/detection.py` |
+| 8 | Grouping of candidates and averaging the line within a group | 7 | `das/grouping.py` |
+| 9 | Velocity of each object (km/h, direction) | 8 | `das/velocity.py` |
+| 10 | (Extra 1) plot of **velocity over time** | 9 | `das/tracking.py` |
+| 11 | (Extra 2) **clustering** of objects (thick/thin, constant/varying speed, shape) | 10 | `das/features.py`, `das/clustering.py` |
+| 12 | Assessment of the number and accuracy of detected objects | 11 | `das/evaluation.py` |
+| 13 | Block diagram of the algorithm with step descriptions | 14 | `docs/flowchart.md` → `report/figures/flowchart.png` |
+| 14 | "Before/after" visualizations for each step, including removed noise | 4–6, 14 | `das/visualization.py` |
+| 15 | Detailed results for 3 two-minute segments | 12 | `scripts/run_pipeline.py` |
+| 16 | Description of experiments (successful and unsuccessful), errors and limitations | 13 | `docs/experiments_log.md` |
+| 17 | Sources of data, code and inspiration | 14 | `docs/references.md` |
+| 18 | Code without errors or warnings, vectorized, readable | all | `tests/`, `pyproject.toml` (`filterwarnings=error`) |
 
-**Ograniczenia technologiczne.** Algorytm może używać tylko **NumPy, OpenCV, scikit-image, Matplotlib i Pillow**.
-Nie wolno używać sieci neuronowych.
+**Technology constraints.** The algorithm may only use **NumPy, OpenCV, scikit-image, Matplotlib and Pillow**.
+Neural networks are not allowed.
 
-- `scipy` **nie jest** na liście dozwolonych bibliotek. Filtry pasmowe, STFT i Welcha piszemy w `numpy.fft`.
-  Alternatywa: zapytać prowadzącego mailem o zgodę na `scipy.signal` i zapisać odpowiedź w raporcie.
-- `pandas` i `sklearn` też nie są na liście. Tabele zapisujemy modułem `csv`/`json`.
-  K-means robimy przez `cv2.kmeans`, a metryki klasteryzacji liczymy w NumPy.
-- Jupyter, nbconvert i pytest to tylko narzędzia, nie część algorytmu.
+- `scipy` is **not** on the list of allowed libraries. Band-pass filters, STFT and Welch are written with `numpy.fft`.
+  Alternative: ask the instructor by e-mail for permission to use `scipy.signal` and record the answer in the report.
+- `pandas` and `sklearn` are not on the list either. Tables are saved with the `csv`/`json` modules.
+  K-means uses `cv2.kmeans`, and clustering metrics are computed in NumPy.
+- Jupyter, nbconvert and pytest are tooling only, not part of the algorithm.
 
 ---
 
-## 1. Fakty o danych (sprawdzone na plikach w `data/`)
+## 1. Data facts (verified on the files in `data/`)
 
-| | Dane rzeczywiste | Dane syntetyczne |
+| | Real data | Synthetic data |
 |---|---|---|
-| Archiwum | `data/20240507.rar` (259 plików) | `data/Synthetic Dataset.zip` (6 próbek × 3 pliki) |
-| Plik | `HHMMSS.npy`, kształt **(6250, 52)**, float32 | `{id}_signal.npy` **(75000, 59)**, float32 + `{id}_ground_truth.npy` int32 + `{id}_metadata.json` |
-| Układ | oś 0 = czas, oś 1 = przestrzeń | jak obok (`matrix_layout: "time_index, space_index"`) |
-| dt / fs | 0.0016 s / **625 Hz** (Nyquist 312.5 Hz) | to samo (`axes.dt`) |
-| dx | 5.1065 m → 52 kanały ≈ 260 m | to samo (`axes.dx`) |
-| Wartości | rząd 1e-6 (std ≈ 1e-6, ekstrema ≈ ±3e-5) | – |
-| Ciągłe odcinki | **090017–090227** (14 plików, 140 s) i **090252–094332** (245 plików, 2450 s) | każda próbka = 2 min |
-| GT | brak | maska z markerami pojazdów + `type` (car/tram/van…), `direction`, `lane_number` |
+| Archive | `data/20240507.rar` (259 files) | `data/Synthetic Dataset.zip` (6 samples × 3 files) |
+| File | `HHMMSS.npy`, shape **(6250, 52)**, float32 | `{id}_signal.npy` **(75000, 59)**, float32 + `{id}_ground_truth.npy` int32 + `{id}_metadata.json` |
+| Layout | axis 0 = time, axis 1 = space | same (`matrix_layout: "time_index, space_index"`) |
+| dt / fs | 0.0016 s / **625 Hz** (Nyquist 312.5 Hz) | same (`axes.dt`) |
+| dx | 5.1065 m → 52 channels ≈ 260 m | same (`axes.dx`) |
+| Values | order of 1e-6 (std ≈ 1e-6, extremes ≈ ±3e-5) | – |
+| Continuous runs | **090017–090227** (14 files, 140 s) and **090252–094332** (245 files, 2450 s) | each sample = 2 min |
+| GT | none | mask with vehicle markers + `type` (car/tram/van…), `direction`, `lane_number` |
 
-Wnioski projektowe:
+Design conclusions:
 
-- Segment 2-minutowy to **12 kolejnych plików** = 75000 × 52 próbek.
-  Wszystkie 3 segmenty muszą leżeć w całości w jednym ciągłym odcinku. `io.load_segment` sprawdza to i rzuca wyjątek.
-- Przy prędkościach pojazdów 10–150 km/h (2.8–42 m/s) przejazd przez jeden kanał trwa 0.12–1.8 s.
-  Samochód jadący 50 km/h przejeżdża cały odcinek kabla w około 19 s.
-  Pełna rozdzielczość czasowa 1.6 ms jest więc zbędna dla obrazu trajektorii.
-  Decymacja ×25 daje 0.04 s na wiersz, czyli 3000 wierszy na 2 minuty.
-- Obraz ma tylko 52 kolumny, więc linie są prawie pionowe. Dlatego interpolujemy oś przestrzeni ×8 (416 kolumn, 0.64 m/px).
-  Wtedy 50 km/h daje kąt ok. 40–45°, co znacznie poprawia rozdzielczość kątową Hougha i filtrów kierunkowych.
-- Konwencja obrazu jak na rysunku z treści: **czas w pionie (w dół), przestrzeń w poziomie**.
-  Linia o prędkości v ma nachylenie Δkol/Δwiersz = v·row_dt/col_dx.
-
----
-
-## 2. Konwencje kodu (obowiązują na każdym etapie)
-
-- Cała logika siedzi w `src/das/`. Skrypty w `scripts/` tylko parsują argumenty, wołają bibliotekę i zapisują wyniki.
-- **Każdy parametr** trafia do dataclass w `config.py`. Wyniki zapisujemy razem z parametrami (JSON), żeby każdy eksperyment był odtwarzalny.
-- **Zakaz pętli po pikselach.** Używamy operacji wektorowych NumPy, `cv2.filter2D`, `np.fft`, `sliding_window_view` oraz `np.add.reduceat`/`reshape` do decymacji.
-  Pętle są dozwolone tylko po obiektach, kernelach i plikach.
-- Funkcje przetwarzające zwracają **słownik etapów pośrednich** (`stages`), bo raport wymaga wizualizacji „przed/po”.
-- Type hints, docstringi, komentarze po angielsku. Plan i log eksperymentów po polsku.
-- Brak ostrzeżeń w runtime:
-  - pytest działa z `filterwarnings=error`;
-  - skrypty finalnie uruchamiamy z `python -W error`;
-  - uważamy na dzielenie przez zero (MAD=0), `float64`→`uint8` w skimage i log z zera (dodajemy eps).
-- Ziarno losowości (`seed`) dla RANSAC i k-means trzymamy w configu.
-- Środowisko zarządzane przez **uv**: Python 3.12 (`.python-version`), zależności w `pyproject.toml`, wersje zablokowane w `uv.lock` (wersjonowany).
-  - `uv sync` tworzy `.venv` z zależnościami, grupą `dev` i pakietem `das` (editable).
-  - Uruchamianie: `uv run python scripts/<skrypt>.py`, `uv run pytest`.
-  - Nowe zależności: `uv add <pkg>` (tylko dozwolone biblioteki!) lub `uv add --dev <pkg>` dla narzędzi.
-  - Po każdej zmianie zależności odśwież `requirements.txt` dla osób bez uv: `uv export --no-hashes --no-dev --no-emit-project -o requirements.txt`.
+- A 2-minute segment is **12 consecutive files** = 75000 × 52 samples.
+  Each of the 3 segments must lie entirely within one continuous run. `io.load_segment` checks this and raises an exception.
+- For vehicle speeds of 10–150 km/h (2.8–42 m/s), crossing one channel takes 0.12–1.8 s.
+  A car at 50 km/h crosses the whole cable section in about 19 s.
+  The full 1.6 ms time resolution is therefore unnecessary for the trajectory image.
+  Decimation ×25 gives 0.04 s per row, i.e. 3000 rows per 2 minutes.
+- The image has only 52 columns, so lines are almost vertical. We therefore interpolate the space axis ×8 (416 columns, 0.64 m/px).
+  Then 50 km/h gives an angle of about 40–45°, which greatly improves the angular resolution of Hough and the directional filters.
+- Image convention as in the brief's figure: **time vertical (downwards), space horizontal**.
+  A line with velocity v has slope Δcol/Δrow = v·row_dt/col_dx.
 
 ---
 
-## 3. Etapy implementacji
+## 2. Code conventions (apply at every stage)
 
-Każdy etap ma: **cel → pliki → zadania → artefakty → kryterium ukończenia (DoD)**.
+- All logic lives in `src/das/`. Scripts in `scripts/` only parse arguments, call the library and save results.
+- **Every parameter** goes into a dataclass in `config.py`. Results are saved together with the parameters (JSON) so that every experiment is reproducible.
+- **No per-pixel loops.** We use vectorized NumPy operations, `cv2.filter2D`, `np.fft`, `sliding_window_view` and `np.add.reduceat`/`reshape` for decimation.
+  Loops are allowed only over objects, kernels and files.
+- Processing functions return a **dictionary of intermediate stages** (`stages`), because the report requires "before/after" visualizations.
+- Type hints, docstrings and comments in English. The plan and the experiments log are also in English.
+- No runtime warnings:
+  - pytest runs with `filterwarnings=error`;
+  - final script runs use `python -W error`;
+  - watch out for division by zero (MAD=0), `float64`→`uint8` in skimage and log of zero (add eps).
+- The random seed (`seed`) for RANSAC and k-means is kept in the config.
+- The environment is managed with **uv**: Python 3.12 (`.python-version`), dependencies in `pyproject.toml`, versions locked in `uv.lock` (versioned).
+  - `uv sync` creates `.venv` with dependencies, the `dev` group and the `das` package (editable).
+  - Running: `uv run python scripts/<script>.py`, `uv run pytest`.
+  - New dependencies: `uv add <pkg>` (allowed libraries only!) or `uv add --dev <pkg>` for tooling.
+  - After every dependency change, refresh `requirements.txt` for people without uv: `uv export --no-hashes --no-dev --no-emit-project -o requirements.txt`.
 
-### Etap 0 – Środowisko i dane
+---
 
-**Pliki:** `requirements.txt`, `pyproject.toml`, `scripts/extract_data.py`, `data/README.md`.
+## 3. Implementation stages
 
-1. ✅ Środowisko uv zainicjalizowane (`uv sync`): numpy, opencv-python, scikit-image, matplotlib, pillow + dev: jupyter, nbconvert, pytest.
-2. Zaimplementuj `extract_data.py`:
-   - ZIP rozpakuj przez `zipfile` do `data/synthetic/`;
-   - RAR rozpakuj przez systemowy `tar.exe` (libarchive w Windows obsługuje RAR, sprawdzone) do `data/real/`;
-   - wywołaj go przez `subprocess.run([...], check=True)`.
-3. Zweryfikuj wynik: 259 plików `.npy`, każdy (6250, 52); 6 próbek syntetycznych, każda (75000, 59); poprawny JSON metadanych.
-4. **Ustal segmenty.** Odczytaj z arkusza Google (link w treści) przydzielony zakres plików i wpisz go do `config.SEGMENTS`.
-   - Praca w parze: 2 przydzielone segmenty + 1 własny. Praca indywidualna: 1 przydzielony + 2 własne. Razem zawsze 3.
-   - Segmenty własne wybierz z odcinka 090252–094332 po EDA (Etap 2). Nie mogą nachodzić na przydzielone.
-   - Wybierz je tak, by różniły się ruchem: jeden z tramwajami/ciężarówkami, jeden z dużą liczbą słabych linii samochodów.
+Each stage has: **goal → files → tasks → artifacts → definition of done (DoD)**.
 
-**DoD:** `uv run python scripts/extract_data.py` kończy się komunikatem OK; `config.SEGMENTS` ma 3 wpisy.
+### Stage 0 – Environment and data
 
-### Etap 1 – Wczytywanie danych
+**Files:** `requirements.txt`, `pyproject.toml`, `scripts/extract_data.py`, `data/README.md`.
 
-**Pliki:** `src/das/io.py`, `tests/test_io.py`.
+1. ✅ uv environment initialized (`uv sync`): numpy, opencv-python, scikit-image, matplotlib, pillow + dev: jupyter, nbconvert, pytest.
+2. Implement `extract_data.py`:
+   - extract the ZIP with `zipfile` into `data/synthetic/`;
+   - extract the RAR with the system `tar.exe` (libarchive on Windows supports RAR, verified) into `data/real/`;
+   - call it via `subprocess.run([...], check=True)`.
+3. Verify the result: 259 `.npy` files, each (6250, 52); 6 synthetic samples, each (75000, 59); valid metadata JSON.
+4. **Fix the segments.** Read the assigned file range from the Google spreadsheet (link in the brief) and enter it in `config.SEGMENTS`.
+   - Working in a pair: 2 assigned segments + 1 own. Working individually: 1 assigned + 2 own. Always 3 in total.
+   - Choose the own segments from the 090252–094332 run after the EDA (Stage 2). They must not overlap the assigned ones.
+   - Choose them so that traffic differs: one with trams/trucks, one with many weak car lines.
 
-1. `list_real_files`, `parse_timestamp`: nazwa `HHMMSS` + data 2024-05-07 → `datetime`.
-2. `find_continuous_runs`: sąsiednie pliki muszą różnić się o 10 s. Funkcja ma zwrócić dwa odcinki opisane w sekcji 1.
+**DoD:** `uv run python scripts/extract_data.py` finishes with an OK message; `config.SEGMENTS` has 3 entries.
+
+### Stage 1 – Data loading
+
+**Files:** `src/das/io.py`, `tests/test_io.py`.
+
+1. `list_real_files`, `parse_timestamp`: name `HHMMSS` + date 2024-05-07 → `datetime`.
+2. `find_continuous_runs`: neighbouring files must differ by 10 s. The function must return the two runs described in section 1.
 3. `load_segment(start, n_files=12)`:
-   - `np.concatenate` po osi czasu;
-   - zwraca macierz (75000, 52) i czas startu;
-   - jeśli w zakresie jest przerwa, rzuca `ValueError`;
-   - ma opcję `pad_files=1`, która wczytuje po jednym pliku marginesu z każdej strony (jeśli istnieje), żeby filtracja FFT nie psuła brzegów segmentu. Margines przycinamy po przetworzeniu.
-4. `load_synthetic(id)`: zwraca (signal, gt, meta); dt i dx bierzemy z `meta["axes"]`.
-5. Testy: ciągłość na sztucznej liście nazw, kształt sklejonego segmentu, wyjątek przy przerwie.
+   - `np.concatenate` along the time axis;
+   - returns a (75000, 52) matrix and the start time;
+   - raises `ValueError` if the range contains a gap;
+   - has a `pad_files=1` option that loads one extra margin file on each side (if it exists), so that FFT filtering does not corrupt the segment edges. The margin is cropped after processing.
+4. `load_synthetic(id)`: returns (signal, gt, meta); dt and dx are taken from `meta["axes"]`.
+5. Tests: continuity on an artificial list of names, shape of the concatenated segment, exception on a gap.
 
-**DoD:** testy zielone; `load_segment` dla każdego segmentu z configu zwraca (75000, 52).
+**DoD:** tests pass; `load_segment` returns (75000, 52) for every segment in the config.
 
-### Etap 2 – Analiza eksploracyjna (EDA)
+### Stage 2 – Exploratory data analysis (EDA)
 
-**Pliki:** `src/das/stats.py`, `scripts/run_eda.py`, `src/das/visualization.py` (`plot_waterfall`).
+**Files:** `src/das/stats.py`, `scripts/run_eda.py`, `src/das/visualization.py` (`plot_waterfall`).
 
-1. **Statystyki globalne po wszystkich 259 plikach**, liczone strumieniowo (`RunningStats`, Welford), bez ładowania całości do RAM:
-   - średnia, wariancja i RMS per kanał;
-   - globalny histogram w stałych binach (skala log), percentyle, skośność i kurtoza.
-   Duża kurtoza oznacza impulsy, więc uzasadnia normalizację odporną (mediana/MAD) zamiast średniej/std.
-2. **Statystyki per segment:** `describe`, `per_channel_stats` (RMS, std, MAD na kanał), `per_time_stats` (okno np. 1 s: RMS uśrednione po kanałach).
-3. **Zmienność:**
-   - mapa RMS (czas × kanał) w oknach 1 s;
-   - profil RMS wzdłuż kabla, który pokazuje martwe lub zaszumione kanały, czyli pionowe pasy;
-   - przebieg RMS w czasie, który pokazuje zdarzenia globalne, czyli poziome pasy;
-   - zmienność RMS kanałów między plikami w ciągu 40 minut.
-4. `detect_bad_channels`: odporny z-score RMS kanału (próg ≈ 3.5). Wynik pozwala maskować lub interpolować złe kanały w Etapie 4.
-5. Wykresy:
-   - waterfall surowego segmentu (|x|, klip do 99 percentyla), wizualnie jak na rysunku w treści;
-   - histogramy, boxploty per kanał, mapa RMS, autokorelacja sąsiednich kanałów (spójność przestrzenna).
-6. Zapis: `outputs/results/eda_global.json`, `eda_<segment>.json`, rysunki w `outputs/figures/eda/`.
+1. **Global statistics over all 259 files**, computed in streaming fashion (`RunningStats`, Welford), without loading everything into RAM:
+   - mean, variance and RMS per channel;
+   - global histogram in fixed bins (log scale), percentiles, skewness and kurtosis.
+   High kurtosis indicates impulses, which justifies robust normalization (median/MAD) instead of mean/std.
+2. **Per-segment statistics:** `describe`, `per_channel_stats` (RMS, std, MAD per channel), `per_time_stats` (e.g. 1 s window: RMS averaged over channels).
+3. **Variability:**
+   - RMS map (time × channel) in 1 s windows;
+   - RMS profile along the cable, which shows dead or noisy channels, i.e. vertical stripes;
+   - RMS over time, which shows global events, i.e. horizontal stripes;
+   - variability of channel RMS between files over the 40 minutes.
+4. `detect_bad_channels`: robust z-score of channel RMS (threshold ≈ 3.5). The result allows masking or interpolating bad channels in Stage 4.
+5. Plots:
+   - waterfall of the raw segment (|x|, clipped at the 99th percentile), visually like the figure in the brief;
+   - histograms, per-channel boxplots, RMS map, correlation of neighbouring channels (spatial coherence).
+6. Output: `outputs/results/eda_global.json`, `eda_<segment>.json`, figures in `outputs/figures/eda/`.
 
-**DoD:** tabela statystyk i co najmniej 6 rysunków gotowych do raportu; lista złych kanałów (może być pusta); wybrane segmenty własne.
+**DoD:** statistics table and at least 6 report-ready figures; list of bad channels (may be empty); own segments chosen.
 
-### Etap 3 – Analiza częstotliwościowa
+### Stage 3 – Frequency analysis
 
-**Pliki:** `src/das/spectral.py`, `scripts/run_spectral.py`.
+**Files:** `src/das/spectral.py`, `scripts/run_spectral.py`.
 
-1. `channel_fft`: `np.fft.rfft(x * window, axis=0)`, czyli **niezależnie dla każdego kanału** (wymaganie z treści).
-   Wynik to wykres widma amplitudowego: mapa częstotliwość × kanał w skali log oraz widmo uśrednione po kanałach.
-2. `welch_psd`: segmentacja przez `sliding_window_view`, okno Hanna, uśrednianie. Daje gładsze widmo do wyboru pasma.
-3. `stft`: dla 2–3 kanałów (środkowy oraz kanał z wyraźnym przejazdem tramwaju) policz spektrogram w skali dB.
-   Pokaż, jak przejazd pojazdu zmienia treść częstotliwościową: tramwaj ma szerokie pasmo i niskie częstotliwości, samochód słabsze, wyższe pasmo.
-4. `band_energy`: energia w pasmach, np. 0–1, 1–5, 5–10, 10–20, 20–50, 50–100, 100–312 Hz.
-   Policz ją osobno dla fragmentów „z pojazdem” i „tło”, wybranych automatycznie po RMS: górny i dolny kwantyl okien.
-   Stosunek energii pojazd/tło w każdym paśmie to **obiektywne kryterium wyboru `f_low`/`f_high`**.
-5. `fk_spectrum`: 2D FFT obrazu (czas × przestrzeń) po decymacji.
-   - Na wykres f-k nałóż linie stałej prędkości ±20, ±50, ±100 km/h.
-   - Pokaż, że energia pojazdów leży w „wachlarzu” prędkości.
-   - Pokaż, że szum skupia się przy k≈0 (zdarzenia jednoczesne na całym kablu, czyli nieskończona prędkość pozorna) i przy f≈0 (stałe pasy kanałów).
-6. Sprawdź tonalne zakłócenia (np. 50 Hz i harmoniczne z sieci) i ewentualnie dodaj filtry notch w dziedzinie FFT.
+1. `channel_fft`: `np.fft.rfft(x * window, axis=0)`, i.e. **independently for each channel** (requirement from the brief).
+   Output: amplitude spectrum plot – a frequency × channel map in log scale and the spectrum averaged over channels.
+2. `welch_psd`: segmentation via `sliding_window_view`, Hann window, averaging. Gives a smoother spectrum for choosing the band.
+3. `stft`: compute a spectrogram in dB for 2–3 channels (the middle one and one with a clear tram passage).
+   Show how a vehicle passage changes the frequency content: a tram has a wide band and low frequencies, a car a weaker, higher band.
+4. `band_energy`: energy in bands, e.g. 0–1, 1–5, 5–10, 10–20, 20–50, 50–100, 100–312 Hz.
+   Compute it separately for "vehicle" and "background" fragments, selected automatically by RMS: top and bottom quantile of windows.
+   The vehicle/background energy ratio in each band is the **objective criterion for choosing `f_low`/`f_high`**.
+5. `fk_spectrum`: 2D FFT of the (time × space) image after decimation.
+   - Overlay constant-velocity lines at ±20, ±50, ±100 km/h on the f-k plot.
+   - Show that vehicle energy lies inside the velocity "fan".
+   - Show that noise concentrates near k≈0 (simultaneous events along the whole cable, i.e. infinite apparent velocity) and near f≈0 (static channel stripes).
+6. Check for tonal interference (e.g. 50 Hz mains and harmonics) and add notch filters in the FFT domain if needed.
 
 **DoD:**
-- wybrane i uzasadnione liczbowo pasmo (wpisane do `PreprocessingParams`);
-- rysunki FFT/PSD/STFT/f-k w raporcie;
-- notatka w `experiments_log.md`.
+- frequency band chosen and justified numerically (entered in `PreprocessingParams`);
+- FFT/PSD/STFT/f-k figures in the report;
+- note in `experiments_log.md`.
 
-### Etap 4 – Usuwanie szumu i budowa obrazu energii
+### Stage 4 – Noise removal and building the energy image
 
-**Pliki:** `src/das/preprocessing.py`, `tests/test_preprocessing.py`.
+**Files:** `src/das/preprocessing.py`, `tests/test_preprocessing.py`.
 
-Kolejność kroków (każdy zapisywany w `stages`):
+Order of steps (each one stored in `stages`):
 
-1. `detrend_channels`: usuń średnią i trend liniowy każdego kanału.
-2. `remove_common_mode`: odejmij **medianę po kanałach** w każdej próbce czasu. Usuwa poziome pasy, czyli zakłócenia wspólne dla całego kabla.
-   Zapisz też usunięty składnik do wizualizacji „co usunięto”.
+1. `detrend_channels`: remove the mean and linear trend of each channel.
+2. `remove_common_mode`: subtract the **median across channels** at each time sample. Removes horizontal stripes, i.e. interference common to the whole cable.
+   Also store the removed component for the "what was removed" visualization.
 3. `bandpass_fft`:
-   - `rfft` po osi czasu, maska pasmowa z kosinusowymi zboczami (`taper_hz`), `irfft`;
-   - filtr jest zero-fazowy, więc nie przesuwa trajektorii w czasie;
-   - opcjonalnie dodaj notch z Etapu 3.
-4. `envelope_downsample`: RMS w blokach po 25 próbek (`x.reshape(-1, 25, n_ch)`, potem średnia kwadratów i pierwiastek).
-   Daje jednocześnie obwiednię energii i decymację: 75000 → 3000 wierszy, 0.04 s/wiersz.
-   Porównaj z wariantem średnia |x| i z prostą decymacją bez obwiedni (eksperyment do raportu).
-5. Złe kanały z Etapu 2 interpoluj liniowo z sąsiadów.
-6. `robust_normalize`: (x − mediana)/(1.4826·MAD) per kanał. Wyrównuje czułość kanałów, czyli usuwa pionowe pasy.
-7. `log_compress_and_clip`: `log1p` z dodatniej części, potem klip do percentyla 99.5.
-   Zmniejsza dominację tramwajów, przez co słabe linie samochodów stają się widoczne. **To kluczowe dla oceny 5.**
-8. Wygładzenie anizotropowe: lekki `cv2.GaussianBlur` (σ_t > σ_x) lub `cv2.bilateralFilter`. Porównaj z medianowym.
-9. `upsample_space`: `cv2.resize(..., interpolation=cv2.INTER_LINEAR)` ×8 w osi przestrzeni.
-10. Opcjonalny wariant równoległy: `skimage.exposure.equalize_adapthist` (CLAHE). Porównaj kontrast słabych linii przed i po.
+   - `rfft` along time, band-pass mask with raised-cosine edges (`taper_hz`), `irfft`;
+   - the filter is zero-phase, so it does not shift trajectories in time;
+   - optionally add the notch from Stage 3.
+4. `envelope_downsample`: RMS in blocks of 25 samples (`x.reshape(-1, 25, n_ch)`, then mean of squares and square root).
+   Gives the energy envelope and decimation at once: 75000 → 3000 rows, 0.04 s/row.
+   Compare with the mean-|x| variant and with plain decimation without an envelope (experiment for the report).
+5. Interpolate bad channels from Stage 2 linearly from their neighbours.
+6. `robust_normalize`: (x − median)/(1.4826·MAD) per channel. Equalizes channel sensitivity, i.e. removes vertical stripes.
+7. `log_compress_and_clip`: `log1p` of the positive part, then clip at the 99.5th percentile.
+   Reduces the dominance of trams, so the weak car lines become visible. **This is key for grade 5.**
+8. Anisotropic smoothing: a light `cv2.GaussianBlur` (σ_t > σ_x) or `cv2.bilateralFilter`. Compare with a median filter.
+9. `upsample_space`: `cv2.resize(..., interpolation=cv2.INTER_LINEAR)` ×8 along the space axis.
+10. Optional parallel variant: `skimage.exposure.equalize_adapthist` (CLAHE). Compare the contrast of weak lines before and after.
 
-Testy:
+Tests:
 
-- sinus w paśmie przechodzi z błędem < 1%, poza pasmem jest tłumiony > 40 dB;
-- common-mode usuwa sygnał identyczny na wszystkich kanałach;
-- kształty po decymacji są poprawne.
+- an in-band sine passes with < 1% error, out-of-band is attenuated by > 40 dB;
+- common-mode removal removes a signal identical on all channels;
+- shapes after decimation are correct.
 
-**DoD:** obraz energii 3000 × 416, na którym gołym okiem widać grube i cienkie linie; rysunek z pełnym łańcuchem etapów i składnikami usuniętymi.
+**DoD:** a 3000 × 416 energy image on which both thick and thin lines are visible to the naked eye; a figure of the full chain of stages and the removed components.
 
-### Etap 5 – Wzmocnienie ukośnych linii (tylko poruszające się obiekty)
+### Stage 5 – Enhancing slanted lines (moving objects only)
 
-**Pliki:** `src/das/enhancement.py`, `tests/test_enhancement.py`.
+**Files:** `src/das/enhancement.py`, `tests/test_enhancement.py`.
 
-1. **Filtr wachlarzowy f-k (`fk_velocity_filter`):**
-   - Pracuj na obrazie po kroku 7 (przed upsamplingiem, czyli z rzeczywistym dx), po odjęciu mediany.
-   - Pad przestrzenny 52 → 128 z oknem Tukeya, żeby ograniczyć przecieki na brzegach.
-   - Maska przepuszcza tylko |v| = |f/k| ∈ [v_min, v_max] = [10, 150] km/h, ze stożkowymi przejściami (`fk_taper`).
-   - **Osobna maska dla każdego kierunku**: znak f·k wybiera ruch w stronę rosnących lub malejących pozycji.
-     Powstają dwa obrazy (+1 i −1), co rozdziela **krzyżujące się linie** (widoczne na rysunku z treści) i upraszcza detekcję.
-   - Fizyczne uzasadnienie:
-     - pozioma linia ma v→∞; to zdarzenie jednoczesne lub szybka fala sejsmiczna o prędkościach setek m/s;
-     - pionowa linia ma v→0; to stały szum kanału;
-     - obie leżą poza wachlarzem i zostają usunięte.
-   - Zapisz obraz usuniętego składnika (wejście − wyjście).
-2. `subtract_background`: biały top-hat (`cv2.morphologyEx(MORPH_TOPHAT)`) lub odjęcie mediany ruchomej. Usuwa wolnozmienne tło.
-3. **Bank filtrów kierunkowych (`oriented_line_kernels` + `directional_filter_bank`):**
-   - Kernele mają postać odcinka o długości L (np. 41 px) i gaussowskim profilu poprzecznym, ze średnią zero i normą jednostkową, czyli filtr dopasowany.
-   - Kąty bierzemy tylko z przedziału odpowiadającego [v_min, v_max] dla danego kierunku (`velocity_to_angle`), np. 24 kąty.
-   - Splot przez `cv2.filter2D`. Wynik to maksimum odpowiedzi i indeks kąta (lokalna orientacja i prędkość).
-   - Uzasadnienie: całkowanie wzdłuż linii zwiększa SNR o rząd √L. **To główny mechanizm wydobycia cienkich, słabych linii.**
-4. Ścieżka alternatywna do porównania w raporcie:
-   - `ridge_filter`, czyli `skimage.filters.sato`/`meijering` (detektor grzbietów z hesjanu);
-   - `skimage.filters.gabor` jako alternatywa dla kerneli liniowych.
-5. `enhance()` zwraca słownik: `fk_pos`, `fk_neg`, `removed_fk`, `bg_removed_*`, `response_*`, `angle_*`.
+1. **f-k fan filter (`fk_velocity_filter`):**
+   - Work on the image after step 7 (before upsampling, i.e. with the real dx), after subtracting the median.
+   - Spatial padding 52 → 128 with a Tukey window to limit edge leakage.
+   - The mask passes only |v| = |f/k| ∈ [v_min, v_max] = [10, 150] km/h, with tapered transitions (`fk_taper`).
+   - **A separate mask for each direction**: the sign of f·k selects movement towards increasing or decreasing positions.
+     This produces two images (+1 and −1), which separates **crossing lines** (visible in the brief's figure) and simplifies detection.
+   - Physical justification:
+     - a horizontal line has v→∞; it is a simultaneous event or a fast seismic wave with velocities of hundreds of m/s;
+     - a vertical line has v→0; it is static channel noise;
+     - both lie outside the fan and are removed.
+   - Store the image of the removed component (input − output).
+2. `subtract_background`: white top-hat (`cv2.morphologyEx(MORPH_TOPHAT)`) or subtraction of a moving median. Removes slowly varying background.
+3. **Directional filter bank (`oriented_line_kernels` + `directional_filter_bank`):**
+   - Kernels are line segments of length L (e.g. 41 px) with a Gaussian cross-profile, zero mean and unit norm, i.e. a matched filter.
+   - Angles are taken only from the range corresponding to [v_min, v_max] for the given direction (`velocity_to_angle`), e.g. 24 angles.
+   - Convolution via `cv2.filter2D`. Output: maximum response and angle index (local orientation and velocity).
+   - Justification: integrating along the line increases SNR by roughly √L. **This is the main mechanism for extracting thin, weak lines.**
+4. Alternative path for comparison in the report:
+   - `ridge_filter`, i.e. `skimage.filters.sato`/`meijering` (Hessian ridge detector);
+   - `skimage.filters.gabor` as an alternative to line kernels.
+5. `enhance()` returns a dictionary: `fk_pos`, `fk_neg`, `removed_fk`, `bg_removed_*`, `response_*`, `angle_*`.
 
-Test: syntetyczny obraz zawiera linię 50 km/h, linię poziomą, linię pionową i szum. Po filtrze zostaje tylko linia ukośna, we właściwym kanale kierunku.
-
-**DoD:**
-- na rzeczywistym segmencie obraz odpowiedzi ma wyraźne linie cienkie i grube, a pasy poziome i pionowe są usunięte;
-- rysunek „przed/po/usunięte” dla f-k i filtra kierunkowego.
-
-### Etap 6 – Detekcja linii: dwie ścieżki przetwarzania
-
-**Pliki:** `src/das/detection.py`, `tests/test_detection.py`.
-
-Każdą ścieżkę uruchamiamy osobno dla kierunku +1 i −1.
-
-**6A. Linie grube i silne (`detect_strong_lines`)**
-
-1. Progowanie Otsu (`skimage.filters.threshold_otsu`) na obrazie odpowiedzi. Alternatywnie próg k·σ_robust (`robust_noise_sigma`).
-2. Otwarcie morfologiczne elementem liniowym zorientowanym w dominującym kierunku (kilka kątów, potem max).
-   Usuwa plamki i podtrzymuje struktury wydłużone.
-3. `skimage.measure.label` + `regionprops`. Odrzuć obiekty o małym polu, małej ekscentryczności, złej orientacji lub zbyt krótkim zasięgu przestrzennym (< `min_channels`).
-4. Dla każdego komponentu dopasuj prostą przez RANSAC (`skimage.measure.ransac` + `LineModelND`) na pikselach ważonych odpowiedzią.
-   Dodatkowo policz grubość jako pole/długość.
-5. Zwróć segmenty `LineSegment(source="strong")` i **maskę obiektów silnych** (do ścieżki 6B).
-
-**6B. Linie cienkie i słabe (`detect_weak_lines`) – warunek oceny 5**
-
-1. Zamaskuj obiekty silne. Maskę dilatujemy o `strong_mask_dilation_px`, a w zamaskowanym obszarze odpowiedź ustawiamy na 0.
-   Dzięki temu „halo” tramwaju nie generuje fałszywych słabych linii, a próg dla słabych można obniżyć.
-2. Progi wyznaczamy z danych: σ = 1.4826·MAD odpowiedzi w tle.
-   `skimage.filters.apply_hysteresis_threshold(low=2σ, high=4σ)` podąża za słabym, ale ciągłym grzbietem.
-3. `skimage.morphology.remove_small_objects`, następnie `skeletonize`.
-4. `cv2.HoughLinesP` na szkielecie (`threshold`, `minLineLength`, `maxLineGap` z configu).
-   Odrzuć segmenty o kącie spoza zakresu prędkości lub o niewłaściwym kierunku.
-5. Komplementarnie `hough_global`, czyli `skimage.transform.hough_line` + `hough_line_peaks` z `min_distance`/`min_angle`.
-   Sprawdza się dla długich, prostych i bardzo słabych linii, bo akumuluje głosy wzdłuż całej linii.
-   Porównaj obie metody w raporcie (recall cienkich linii na danych syntetycznych).
-6. Opcjonalnie dla wydajności i lepszej lokalności: przetwarzaj w oknach czasowych 30 s z zakładką 50%, a segmenty scalaj w Etapie 7.
-
-Test: obraz z jedną grubą i jedną cienką linią (SNR ≈ 1.5) + szum. Obie linie mają zostać wykryte, cienka przez ścieżkę 6B.
+Test: a synthetic image contains a 50 km/h line, a horizontal line, a vertical line and noise. After filtering only the slanted line remains, in the correct direction channel.
 
 **DoD:**
-- na danych syntetycznych recall dla `car` ≥ ~0.8, a dla `tram` ≈ 1.0 (cele orientacyjne, raportujemy rzeczywiste);
-- na segmentach rzeczywistych wizualnie wykryta większość cienkich linii.
+- on a real segment the response image shows clear thin and thick lines, and horizontal and vertical stripes are removed;
+- a "before/after/removed" figure for the f-k filter and the directional filter.
 
-### Etap 7 – Grupowanie kandydatów i uśrednianie linii
+### Stage 6 – Line detection: two processing paths
 
-**Pliki:** `src/das/grouping.py`.
+**Files:** `src/das/detection.py`, `tests/test_detection.py`.
 
-1. Każdy segment opisz w przestrzeni fizycznej parą **(v [km/h], t_ref [s])**, gdzie t_ref to czas przejścia przez środek kabla (`segment_to_params`).
-   Ta parametryzacja nie zależy od długości segmentu.
+Each path is run separately for direction +1 and −1.
+
+**6A. Thick, strong lines (`detect_strong_lines`)**
+
+1. Otsu thresholding (`skimage.filters.threshold_otsu`) on the response image. Alternatively a k·σ_robust threshold (`robust_noise_sigma`).
+2. Morphological opening with a linear structuring element oriented in the dominant direction (several angles, then max).
+   Removes specks and preserves elongated structures.
+3. `skimage.measure.label` + `regionprops`. Reject objects with small area, low eccentricity, wrong orientation or too short a spatial extent (< `min_channels`).
+4. For each component fit a line with RANSAC (`skimage.measure.ransac` + `LineModelND`) on pixels weighted by the response.
+   Additionally compute thickness as area/length.
+5. Return `LineSegment(source="strong")` segments and the **mask of strong objects** (for path 6B).
+
+**6B. Thin, weak lines (`detect_weak_lines`) – grade-5 condition**
+
+1. Mask out the strong objects. The mask is dilated by `strong_mask_dilation_px`, and the response in the masked area is set to 0.
+   This way a tram's "halo" does not create false weak lines, and the threshold for weak lines can be lowered.
+2. Thresholds are derived from the data: σ = 1.4826·MAD of the background response.
+   `skimage.filters.apply_hysteresis_threshold(low=2σ, high=4σ)` follows a weak but continuous ridge.
+3. `skimage.morphology.remove_small_objects`, then `skeletonize`.
+4. `cv2.HoughLinesP` on the skeleton (`threshold`, `minLineLength`, `maxLineGap` from the config).
+   Reject segments with an angle outside the velocity range or with the wrong direction.
+5. Complementary `hough_global`, i.e. `skimage.transform.hough_line` + `hough_line_peaks` with `min_distance`/`min_angle`.
+   Works well for long, straight and very weak lines because it accumulates votes along the whole line.
+   Compare both methods in the report (recall of thin lines on synthetic data).
+6. Optionally, for performance and better locality: process in 30 s time windows with 50% overlap and merge the segments in Stage 7.
+
+Test: an image with one thick and one thin line (SNR ≈ 1.5) + noise. Both lines must be detected, the thin one via path 6B.
+
+**DoD:**
+- on synthetic data recall ≥ ~0.8 for `car` and ≈ 1.0 for `tram` (indicative targets; actual values are reported);
+- on real segments most thin lines are visibly detected.
+
+### Stage 7 – Grouping candidates and averaging lines
+
+**Files:** `src/das/grouping.py`.
+
+1. Describe each segment in physical space by the pair **(v [km/h], t_ref [s])**, where t_ref is the time of crossing the middle of the cable (`segment_to_params`).
+   This parametrization does not depend on segment length.
 2. `group_segments`:
-   - macierz odległości po parach (wektorowo), łączenie gdy |Δv| < `tol_velocity_kmh` (lub względnie < 15%) i |Δt_ref| < `tol_time_s`;
-   - grupy wyznaczamy jako składowe spójne (union-find albo `skimage.measure.label` na macierzy sąsiedztwa).
-   Scala to:
-   - podwójne krawędzie grubej linii;
-   - pocięte fragmenty cienkiej linii;
-   - duplikaty z okien czasowych;
-   - wyniki `HoughLinesP` i `hough_line`.
-3. `merge_group`: średnia ważona (waga = długość × średnia odpowiedź) albo ponowne dopasowanie prostej do wszystkich końców i pikseli grupy.
-   Wynikiem jest jeden `DetectedObject` z zasięgiem (x_start..x_end, t_start..t_end).
-4. `remove_duplicates`: jeśli obiekt „weak” pokrywa się z „strong”, zostaje strong.
-   Odrzuć obiekty z zasięgiem < `min_channels` kanałów lub prędkością poza 5–150 km/h (filtr wiarygodności).
-5. Etykieta `kind` (strong/weak): według ścieżki pochodzenia, skorygowana grubością i energią (Etap 10).
+   - pairwise distance matrix (vectorized); link when |Δv| < `tol_velocity_kmh` (or relatively < 15%) and |Δt_ref| < `tol_time_s`;
+   - groups are connected components (union-find or `skimage.measure.label` on the adjacency matrix).
+   This merges:
+   - double edges of a thick line;
+   - broken fragments of a thin line;
+   - duplicates from time windows;
+   - results of `HoughLinesP` and `hough_line`.
+3. `merge_group`: weighted average (weight = length × mean response) or refitting a line to all endpoints and pixels of the group.
+   The result is one `DetectedObject` with an extent (x_start..x_end, t_start..t_end).
+4. `remove_duplicates`: if a "weak" object overlaps a "strong" one, the strong one is kept.
+   Reject objects spanning < `min_channels` channels or with velocity outside 5–150 km/h (plausibility filter).
+5. `kind` label (strong/weak): based on the source path, corrected by thickness and energy (Stage 10).
 
-**DoD:** jedna linia na jeden pojazd; brak wielokrotnych linii na tramwaju; rysunek „kandydaci → grupy → linia średnia”.
+**DoD:** one line per vehicle; no multiple lines on a tram; a "candidates → groups → mean line" figure.
 
-### Etap 8 – Wyznaczenie prędkości
+### Stage 8 – Velocity estimation
 
-**Pliki:** `src/das/velocity.py`, `tests/test_velocity.py`.
+**Files:** `src/das/velocity.py`, `tests/test_velocity.py`.
 
-1. `slope_to_velocity`: v = (Δkol·col_dx)/(Δwiersz·row_dt) [m/s], potem ×3.6 → km/h.
-   Znak oznacza kierunek (+ w stronę rosnącej pozycji na kablu).
-2. `fit_constant_velocity`: na punktach z trackingu (Etap 9) dopasuj prostą metodą najmniejszych kwadratów i podaj R².
-   To dokładniejsza prędkość niż z samego Hougha i ją podajemy w tabelach.
-3. Wizualizacja jak na rysunku z treści: czerwone linie na waterfallu, etykieta „xx.xx km/h”.
-   Linie silne rysujemy ciągłą kreską, słabe przerywaną. Oś czasu w formacie HH:MM:SS, oś przestrzeni w metrach.
-4. Tabela obiektów per segment (CSV): id, kind, kierunek, v [km/h], t_start, t_end, x_start, x_end, score, R².
+1. `slope_to_velocity`: v = (Δcol·col_dx)/(Δrow·row_dt) [m/s], then ×3.6 → km/h.
+   The sign gives the direction (+ towards increasing cable position).
+2. `fit_constant_velocity`: fit a least-squares line to the tracking points (Stage 9) and report R².
+   This velocity is more accurate than Hough alone and is the one reported in the tables.
+3. Visualization as in the brief's figure: red lines on the waterfall, label "xx.xx km/h".
+   Strong lines are drawn solid, weak lines dashed. Time axis in HH:MM:SS format, space axis in metres.
+4. Per-segment object table (CSV): id, kind, direction, v [km/h], t_start, t_end, x_start, x_end, score, R².
 
-Test: linia o znanym nachyleniu daje znaną prędkość; zgodność konwencji znaku z `direction` z metadanych syntetycznych.
+Test: a line with a known slope gives a known velocity; the sign convention matches `direction` from the synthetic metadata.
 
-**DoD:** dla danych syntetycznych MAE prędkości raportowane per typ pojazdu; dla danych rzeczywistych tabele i rysunki.
+**DoD:** for synthetic data, velocity MAE reported per vehicle type; for real data, tables and figures.
 
-### Etap 9 – (Extra 1) Śledzenie i prędkość w funkcji czasu
+### Stage 9 – (Extra 1) Tracking and velocity over time
 
-**Pliki:** `src/das/tracking.py`, `visualization.plot_velocity_profiles`.
+**Files:** `src/das/tracking.py`, `visualization.plot_velocity_profiles`.
 
 1. `track_ridge`:
-   - dla każdego obiektu i każdego kanału w zasięgu wyznacz przewidywany czas z linii średniej;
-   - w oknie ±`search_halfwidth_s` znajdź maksimum energii (argmax wektorowo na wyciętym pasie);
-   - doprecyzuj położenie interpolacją paraboliczną (subpróbkowo).
-   Wynik to punkty (x_m, t_s).
-2. `fit_trajectory_ransac`: odrzuć punkty odstające, np. przecięcie z innym pojazdem.
-3. `velocity_profile`: lokalne nachylenie dx/dt w oknie przesuwnym `velocity_window_channels` (wygładzony gradient lub lokalna regresja liniowa).
-   Wynik to v(t) w km/h.
+   - for each object and each channel in its extent, compute the predicted time from the mean line;
+   - find the energy maximum in a ±`search_halfwidth_s` window (vectorized argmax on the cut-out band);
+   - refine the position by parabolic interpolation (sub-sample).
+   The output is a set of points (x_m, t_s).
+2. `fit_trajectory_ransac`: reject outliers, e.g. a crossing with another vehicle.
+3. `velocity_profile`: local slope dx/dt in a sliding window of `velocity_window_channels` (smoothed gradient or local linear regression).
+   The output is v(t) in km/h.
 4. `speed_variability`:
-   - porównanie residuów dopasowania liniowego i kwadratowego (x(t) = a t² + b t + c);
-   - odchylenie std v(t) i średnie przyspieszenie.
-   Służy do etykiety „stała / zmienna prędkość”.
-5. Wykres v(t): osobne panele dla kilku obiektów oraz zbiorczy wykres dla segmentu z kolorem wg klastra.
-   Trajektorie nieliniowe (krzywe) nanieś na waterfall.
+   - comparison of residuals of linear and quadratic fits (x(t) = a t² + b t + c);
+   - standard deviation of v(t) and mean acceleration.
+   Used for the "constant / varying speed" label.
+5. v(t) plot: separate panels for several objects and a combined plot per segment coloured by cluster.
+   Draw non-linear (curved) trajectories on the waterfall.
 
-**DoD:** wykres v(t) dla każdego obiektu z każdego segmentu; zidentyfikowane przypadki hamowania i przyspieszania (np. przy skrzyżowaniu lub przystanku).
+**DoD:** a v(t) plot for every object in every segment; identified braking and acceleration cases (e.g. at an intersection or a stop).
 
-### Etap 10 – (Extra 2) Cechy i klasteryzacja obiektów
+### Stage 10 – (Extra 2) Features and clustering of objects
 
-**Pliki:** `src/das/features.py`, `src/das/clustering.py`, `scripts/run_clustering.py`.
+**Files:** `src/das/features.py`, `src/das/clustering.py`, `scripts/run_clustering.py`.
 
-1. Cechy obiektu (`object_features`):
-   - **geometria:** |v|, kierunek, std v(t), współczynnik krzywizny (a z fitu kwadratowego), R², długość czasu, zasięg przestrzenny;
-   - **grubość linii** (`line_thickness`): FWHM profilu poprzecznego do trajektorii [s], uśredniona po kanałach;
-   - **energia:** maksimum i średnia odpowiedzi wzdłuż trajektorii, energia całkowita;
-   - **widmo:** centroid widmowy i stosunek energii pasmo niskie/wysokie surowego sygnału wzdłuż trajektorii (okno wokół t(x) dla każdego kanału);
-   - **kształt:** liczba „podlinii” (np. tramwaj = kilka wózków lub osi, czyli równoległe prążki); profil autokorelacji poprzecznej.
-2. `standardize` (z-score), `choose_k` dla k = 2..6 według silhouette (`silhouette_score` w NumPy) i metodą łokcia (compactness z `cv2.kmeans`).
-3. `kmeans` przez `cv2.kmeans` (`KMEANS_PP_CENTERS`, `attempts=10`).
-4. Interpretacja:
-   - centroidy klastrów w jednostkach fizycznych;
-   - nazwy klastrów, np. „gruba/szybka/stała”, „cienka/stała”, „zmienna prędkość”;
-   - galeria wycinków obrazu (miniatury trajektorii) dla każdego klastra, czyli „kształt linii”.
-5. `pca_2d` (SVD) daje scatter 2D z kolorem klastra.
-   Dodatkowo pokaż reguły proste (progi grubość/energia) jako baseline dla porównania.
-6. Walidacja na danych syntetycznych: `cluster_purity` względem `type` (car/tram/van).
-   Na rzeczywistych: zgodność z etykietami ręcznymi thick/thin (Etap 11).
-7. Klasteryzację liczymy na obiektach ze **wszystkich 3 segmentów razem** (więcej próbek). Można też dodać inne segmenty z ciągłego odcinka, co treść dopuszcza.
+1. Object features (`object_features`):
+   - **geometry:** |v|, direction, std of v(t), curvature coefficient (a from the quadratic fit), R², duration, spatial extent;
+   - **line thickness** (`line_thickness`): FWHM of the profile perpendicular to the trajectory [s], averaged over channels;
+   - **energy:** maximum and mean response along the trajectory, total energy;
+   - **spectrum:** spectral centroid and low/high band energy ratio of the raw signal along the trajectory (a window around t(x) for each channel);
+   - **shape:** number of "sub-lines" (e.g. a tram = several bogies or axles, i.e. parallel fringes); transverse autocorrelation profile.
+2. `standardize` (z-score), `choose_k` for k = 2..6 by silhouette (`silhouette_score` in NumPy) and the elbow method (compactness from `cv2.kmeans`).
+3. `kmeans` via `cv2.kmeans` (`KMEANS_PP_CENTERS`, `attempts=10`).
+4. Interpretation:
+   - cluster centroids in physical units;
+   - cluster names, e.g. "thick/fast/constant", "thin/constant", "varying speed";
+   - a gallery of image crops (trajectory thumbnails) for each cluster, i.e. the "shape of the lines".
+5. `pca_2d` (SVD) gives a 2D scatter coloured by cluster.
+   Additionally show simple rules (thickness/energy thresholds) as a baseline for comparison.
+6. Validation on synthetic data: `cluster_purity` against `type` (car/tram/van).
+   On real data: agreement with the manual thick/thin labels (Stage 11).
+7. Clustering is computed on objects from **all 3 segments together** (more samples). Other segments from the continuous run can also be added, which the brief allows.
 
-**DoD:** wykres PCA, tabela centroidów, galerie, opis klastrów w raporcie.
+**DoD:** PCA plot, centroid table, galleries, description of the clusters in the report.
 
-### Etap 11 – Ewaluacja ilościowa
+### Stage 11 – Quantitative evaluation
 
-**Pliki:** `src/das/evaluation.py`, `scripts/evaluate_synthetic.py`, `scripts/annotate_real.py`, `data/annotations/manual_labels.json`.
+**Files:** `src/das/evaluation.py`, `scripts/evaluate_synthetic.py`, `scripts/annotate_real.py`, `data/annotations/manual_labels.json`.
 
-1. **Dane syntetyczne:**
-   - `gt_objects_from_mask`: dla każdego `marker_value` weź punkty (x, t) z maski, dopasuj prostą i wyznacz v_true, t_ref, typ i kierunek;
-   - uruchom pipeline (dt i dx z metadanych; 59 kanałów, więc kod nie może zakładać 52);
-   - `match_detections`: zachłanne parowanie 1-1 po koszcie (|Δt_ref|/tol_t + |Δv|/tol_v) z bramkowaniem;
-   - `detection_metrics`: TP, FP, FN, precision, recall, F1 **osobno dla car (cienkie) i tram (grube)**, bo to dowód realizacji oceny 5;
+1. **Synthetic data:**
+   - `gt_objects_from_mask`: for each `marker_value` take the (x, t) points from the mask, fit a line and derive v_true, t_ref, type and direction;
+   - run the pipeline (dt and dx from metadata; 59 channels, so the code must not assume 52);
+   - `match_detections`: greedy one-to-one matching by cost (|Δt_ref|/tol_t + |Δv|/tol_v) with gating;
+   - `detection_metrics`: TP, FP, FN, precision, recall, F1 **separately for car (thin) and tram (thick)**, as evidence of meeting the grade-5 requirement;
    - `velocity_errors`: MAE, RMSE, MAPE;
-   - `trajectory_iou` między maską wykrytych trajektorii a maską GT (z tolerancją).
-2. **Dane rzeczywiste (brak GT):**
-   - `annotate_real.py`: interaktywnie (`plt.ginput`) zaznacz początek i koniec każdej widocznej linii w 3 segmentach, z etykietą thick/thin;
-   - zapisz do `manual_labels.json` (wersjonowane);
-   - te same metryki co wyżej liczone względem adnotacji. Zaznacz w raporcie, że to ocena subiektywna (ograniczenie metody).
-3. Wyniki zapisz do `outputs/results/eval_*.json` i tabel w raporcie.
+   - `trajectory_iou` between the mask of detected trajectories and the GT mask (with tolerance).
+2. **Real data (no GT):**
+   - `annotate_real.py`: interactively (`plt.ginput`) mark the start and end of every visible line in the 3 segments, with a thick/thin label;
+   - save to `manual_labels.json` (versioned);
+   - the same metrics as above computed against the annotations. State in the report that this is a subjective assessment (a limitation of the method).
+3. Save results to `outputs/results/eval_*.json` and to tables in the report.
 
-**DoD:** tabela metryk dla 6 próbek syntetycznych i 3 segmentów rzeczywistych, w podziale na thick i thin.
+**DoD:** a metrics table for the 6 synthetic samples and the 3 real segments, split into thick and thin.
 
-### Etap 12 – Pipeline end-to-end i wyniki dla 3 segmentów
+### Stage 12 – End-to-end pipeline and results for 3 segments
 
-**Pliki:** `src/das/pipeline.py`, `scripts/run_pipeline.py`.
+**Files:** `src/das/pipeline.py`, `scripts/run_pipeline.py`.
 
-1. `run_pipeline` łączy Etapy 4→5→6A/6B→7→8→9→10 (cechy) i mierzy czas każdego etapu `time.perf_counter`.
+1. `run_pipeline` chains Stages 4→5→6A/6B→7→8→9→10 (features) and times each stage with `time.perf_counter`.
 2. `save_result`:
-   - CSV obiektów i JSON z parametrami oraz czasami;
-   - opcjonalnie cache etapów w `.npy`, żeby notebook raportu nie przeliczał wszystkiego.
-3. `run_pipeline.py --segment all` dla każdego segmentu z configu produkuje:
-   - waterfall surowy, obraz po preprocessingu, obraz po f-k (oba kierunki), odpowiedź filtra;
-   - kandydatów, wynik końcowy z prędkościami, wykres v(t), tabelę obiektów;
-   - liczbę obiektów strong/weak per kierunek.
-4. Ten sam skrypt działa dla `--synthetic <id>` i dowolnego `--start HHMMSS`, co pokazuje, że podejście jest ogólne i nic nie jest zakodowane na sztywno.
-5. Cel wydajności: segment 2-min w ≲ 20–30 s na laptopie. Raportujemy tabelę czasów etapów.
+   - CSV of objects and JSON with parameters and timings;
+   - optional cache of stages in `.npy`, so the report notebook does not recompute everything.
+3. `run_pipeline.py --segment all` produces, for each segment in the config:
+   - raw waterfall, image after preprocessing, image after f-k (both directions), filter response;
+   - candidates, final result with velocities, v(t) plot, object table;
+   - number of strong/weak objects per direction.
+4. The same script works with `--synthetic <id>` and any `--start HHMMSS`, which shows that the approach is general and nothing is hardcoded.
+5. Performance target: a 2-min segment in ≲ 20–30 s on a laptop. A table of stage timings is reported.
 
-**DoD:** jedna komenda generuje komplet wyników dla wszystkich 3 segmentów bez błędów i ostrzeżeń (`uv run python -W error scripts/run_pipeline.py --segment all`).
+**DoD:** one command generates the full set of results for all 3 segments without errors or warnings (`uv run python -W error scripts/run_pipeline.py --segment all`).
 
-### Etap 13 – Strojenie parametrów, ablacja, eksperymenty
+### Stage 13 – Parameter tuning, ablation, experiments
 
-**Pliki:** `scripts/tune_parameters.py`, `docs/experiments_log.md`.
+**Files:** `scripts/tune_parameters.py`, `docs/experiments_log.md`.
 
-1. Siatka po kluczowych parametrach (`f_low`/`f_high`, decymacja, progi histerezy, długość kernela, `tol_*`).
-   Optymalizujemy F1 (car + tram) na syntetycznych i F1 na adnotacjach rzeczywistych.
-   **Nie stroimy pod pojedyncze linie**, bo treść zabrania hardkodowania.
-2. **Ablacja:** wyłączamy kolejno common-mode, f-k, log-kompresję, bank filtrów i maskowanie silnych linii.
-   Wynikiem jest tabela zmiany recall cienkich linii, czyli dowód, który krok za co odpowiada.
-3. **Porównanie metod:**
-   - HoughLinesP vs `hough_line` (globalny) vs RANSAC na komponentach;
-   - filtr kierunkowy vs Sato/Meijering vs Gabor;
+1. Grid over the key parameters (`f_low`/`f_high`, decimation, hysteresis thresholds, kernel length, `tol_*`).
+   We optimize F1 (car + tram) on synthetic data and F1 on the real-data annotations.
+   **We do not tune for individual lines**, because the brief forbids hardcoding.
+2. **Ablation:** switch off in turn common-mode removal, f-k, log compression, the filter bank and masking of strong lines.
+   The result is a table of changes in thin-line recall, i.e. evidence of which step is responsible for what.
+3. **Method comparison:**
+   - HoughLinesP vs `hough_line` (global) vs RANSAC on components;
+   - directional filter vs Sato/Meijering vs Gabor;
    - RMS vs |x|.
-4. Analiza wrażliwości: wykres F1 w funkcji progu histerezy.
-5. Każdą próbę (także nieudaną) wpisujemy do `experiments_log.md`: co, parametry, wynik, decyzja.
-   Typowe nieudane próby do opisania:
-   - Canny + Hough na surowym obrazie (dużo fałszywych linii od pasów);
-   - pojedynczy próg globalny (gubi cienkie linie);
-   - f-k bez paddingu (artefakty brzegowe).
+4. Sensitivity analysis: plot of F1 as a function of the hysteresis threshold.
+5. Every attempt (including unsuccessful ones) is recorded in `experiments_log.md`: what, parameters, result, decision.
+   Typical unsuccessful attempts to describe:
+   - Canny + Hough on the raw image (many false lines from stripes);
+   - a single global threshold (misses thin lines);
+   - f-k without padding (edge artifacts).
 
-**DoD:** tabela ablacji, porównanie metod i finalny zestaw parametrów zapisany jako domyślny w `config.py`.
+**DoD:** ablation table, method comparison and the final parameter set saved as the defaults in `config.py`.
 
-### Etap 14 – Raport i schemat blokowy
+### Stage 14 – Report and block diagram
 
-**Pliki:** `report/report.ipynb` (szkielet sekcji już utworzony), `scripts/make_report_figures.py`, `docs/flowchart.md`, `docs/references.md`.
+**Files:** `report/report.ipynb` (section skeleton already created), `scripts/make_report_figures.py`, `docs/flowchart.md`, `docs/references.md`.
 
-1. Forma oddania: **`report.ipynb` + `report.html`**, przez `uv run jupyter nbconvert --to html --execute report/report.ipynb`.
-   Opcjonalnie PDF przez drukowanie HTML do PDF. Kod źródłowy `.py` z `src/` i `scripts/` dołączamy w całości.
-2. Schemat blokowy: diagram mermaid z `docs/flowchart.md` wyeksportuj do PNG (mermaid.live lub draw.io) jako `report/figures/flowchart.png`.
-   Do każdego bloku dodaj opis: co robi i po co.
-3. `make_report_figures.py` regeneruje wszystkie rysunki w zmniejszonej rozdzielczości (dpi ≈ 100–110, waterfall przeskalowany `cv2.INTER_AREA`), żeby raport nie był za duży.
-4. Treść raportu (sekcje są już w notebooku):
-   1. dane;
+1. Submission format: **`report.ipynb` + `report.html`**, via `uv run jupyter nbconvert --to html --execute report/report.ipynb`.
+   Optionally a PDF by printing the HTML to PDF. The `.py` source code from `src/` and `scripts/` is included in full.
+2. Block diagram: export the mermaid diagram from `docs/flowchart.md` to PNG (mermaid.live or draw.io) as `report/figures/flowchart.png`.
+   Add a description for each block: what it does and why.
+3. `make_report_figures.py` regenerates all figures at reduced resolution (dpi ≈ 100–110, waterfall downscaled with `cv2.INTER_AREA`) so the report is not too large.
+4. Report content (the sections already exist in the notebook):
+   1. data;
    2. EDA;
-   3. analiza częstotliwościowa;
-   4. schemat;
-   5. preprocessing z obrazami „przed/po/usunięte”;
-   6. wzmocnienie;
-   7. detekcja strong/weak i grupowanie;
-   8. prędkości;
+   3. frequency analysis;
+   4. block diagram;
+   5. preprocessing with "before/after/removed" images;
+   6. enhancement;
+   7. strong/weak detection and grouping;
+   8. velocities;
    9. v(t);
-   10. klasteryzacja;
-   11. **wyniki szczegółowe dla 3 segmentów**;
-   12. ewaluacja, ablacja i eksperymenty nieudane;
-   13. wnioski, błędy merytoryczne i metodyczne oraz ograniczenia;
-   14. źródła.
-5. Ograniczenia do omówienia:
-   - brak GT dla danych rzeczywistych;
-   - pojazdy jadące równolegle lub w kolumnie zlewają się w jedną linię;
-   - przecięcia linii;
-   - nieznana dokładna geometria kabla (kabel może nie być równoległy do jezdni na całej długości, co daje błąd prędkości);
-   - krótki odcinek kabla (≈260 m) ogranicza dokładność v(t);
-   - różnice między danymi syntetycznymi a rzeczywistymi.
-6. Źródła: dane, notebook przykładowy z kursu, dokumentacja bibliotek, literatura (lista w `docs/references.md`; przed cytowaniem zweryfikować szczegóły bibliograficzne).
-   Podajemy też narzędzia AI, jeśli były użyte, z opisem do czego.
+   10. clustering;
+   11. **detailed results for the 3 segments**;
+   12. evaluation, ablation and unsuccessful experiments;
+   13. conclusions, factual and methodological errors, and limitations;
+   14. sources.
+5. Limitations to discuss:
+   - no GT for real data;
+   - vehicles driving side by side or in a convoy merge into one line;
+   - crossing lines;
+   - unknown exact cable geometry (the cable may not run parallel to the road along its entire length, which causes velocity error);
+   - the short cable section (≈260 m) limits the accuracy of v(t);
+   - differences between synthetic and real data.
+6. Sources: data, the course example notebook, library documentation, literature (list in `docs/references.md`; verify bibliographic details before citing).
+   AI tools are also listed if used, with a description of what for.
 
-**DoD:** notebook wykonuje się od początku do końca bez błędów; HTML < ~20 MB; wszystkie punkty z sekcji „Report” treści pokryte.
+**DoD:** the notebook runs from start to finish without errors; HTML < ~20 MB; every item in the brief's "Report" section is covered.
 
-### Etap 15 – Kontrola jakości i oddanie
+### Stage 15 – Quality control and submission
 
-1. `uv run pytest` z `filterwarnings=error`: wszystkie testy zielone (zdjąć `skip` z szablonów testów).
-2. Czysty klon repo: `uv sync`, `uv run python scripts/extract_data.py`, `uv run python scripts/run_pipeline.py --segment all`. Wszystko przechodzi bez ręcznych poprawek.
-   Sprawdź też ścieżkę bez uv: `pip install -r requirements.txt && pip install -e .`.
-3. Przegląd kodu:
-   - brak pętli po pikselach, brak martwego kodu;
-   - docstringi i komentarze na miejscu;
-   - brak hardkodowanych pozycji linii;
-   - parametry tylko w `config.py`.
-4. Paczka do oddania: `src/`, `scripts/`, `tests/`, `report/report.ipynb`, `report/report.html`, `pyproject.toml`, `uv.lock`, `.python-version`, `requirements.txt`, `README.md`.
-   Bez danych, chyba że prowadzący wymaga inaczej.
-5. Przygotowanie do prezentacji (26.11 / 01.12): krótkie demo `run_pipeline.py` na jednym segmencie, kluczowe rysunki, umiejętność uzasadnienia każdego kroku i parametru.
+1. `uv run pytest` with `filterwarnings=error`: all tests pass (remove `skip` from the test templates).
+2. Clean clone of the repo: `uv sync`, `uv run python scripts/extract_data.py`, `uv run python scripts/run_pipeline.py --segment all`. Everything passes without manual fixes.
+   Also check the path without uv: `pip install -r requirements.txt && pip install -e .`.
+3. Code review:
+   - no per-pixel loops, no dead code;
+   - docstrings and comments in place;
+   - no hardcoded line positions;
+   - parameters only in `config.py`.
+4. Submission package: `src/`, `scripts/`, `tests/`, `report/report.ipynb`, `report/report.html`, `pyproject.toml`, `uv.lock`, `.python-version`, `requirements.txt`, `README.md`.
+   No data, unless the instructor requires otherwise.
+5. Presentation preparation (26.11 / 01.12): a short demo of `run_pipeline.py` on one segment, key figures, and the ability to justify every step and parameter.
 
 ---
 
-## 4. Harmonogram (08.11 – 22.11.2026)
+## 4. Schedule (08.11 – 22.11.2026)
 
-| Dzień | Etapy | Rezultat |
+| Day | Stages | Result |
 |---|---|---|
-| 08–09.11 | 0, 1, 2 | dane rozpakowane, loader, EDA, wybrane segmenty |
-| 10.11 | 3 | pasmo filtracji uzasadnione |
-| 11–12.11 | 4, 5 | obraz energii + f-k + bank filtrów |
-| 13–15.11 | 6, 7, 8 | detekcja strong + weak, grupowanie, prędkości (**rdzeń oceny 5**) |
-| 16.11 | 11 | metryki na syntetycznych + adnotacje 3 segmentów rzeczywistych |
+| 08–09.11 | 0, 1, 2 | data extracted, loader, EDA, segments chosen |
+| 10.11 | 3 | filter band justified |
+| 11–12.11 | 4, 5 | energy image + f-k + filter bank |
+| 13–15.11 | 6, 7, 8 | strong + weak detection, grouping, velocities (**core of grade 5**) |
+| 16.11 | 11 | metrics on synthetic data + annotations of the 3 real segments |
 | 17.11 | 9 | v(t) |
-| 18.11 | 10 | klasteryzacja |
-| 19.11 | 12, 13 | pełne przebiegi, strojenie, ablacja |
-| 20–21.11 | 14 | raport + schemat blokowy |
-| 22.11 | 15 | kontrola jakości, **oddanie przed 23:59** |
-| 23–25.11 | – | przygotowanie prezentacji |
+| 18.11 | 10 | clustering |
+| 19.11 | 12, 13 | full runs, tuning, ablation |
+| 20–21.11 | 14 | report + block diagram |
+| 22.11 | 15 | quality control, **submission before 23:59** |
+| 23–25.11 | – | presentation preparation |
 
-Bufor: jeśli Etap 6B (cienkie linie) się opóźnia, ma on priorytet nad Etapami 9 i 10, bo to warunek oceny 5, a 9 i 10 to punkty dodatkowe.
+Buffer: if Stage 6B (thin lines) is delayed, it takes priority over Stages 9 and 10, because it is the grade-5 condition, whereas 9 and 10 are extra points.
 
 ---
 
-## 5. Ryzyka i plan B
+## 5. Risks and plan B
 
-| Ryzyko | Objaw | Reakcja |
+| Risk | Symptom | Response |
 |---|---|---|
-| Cienkie linie giną w szumie | niski recall `car` | dłuższe kernele, log-kompresja, maskowanie silnych, `hough_line` globalny, mniejsza decymacja |
-| Dużo fałszywych linii | niska precyzja | ostrzejszy filtr f-k, min. zasięg w kanałach, filtr wiarygodności v, wyższy próg `high` histerezy |
-| Grube linie rozbite na wiele | wiele obiektów na tramwaju | większe `tol_*` w grupowaniu, zamknięcie morfologiczne w 6A |
-| Krzyżujące się linie | zlane obiekty | rozdzielenie kierunków w f-k (już w planie), RANSAC przy trackingu |
-| Artefakty brzegowe FFT | fałszywe linie na brzegach segmentu | `pad_files=1`, okno Tukeya, padding przestrzenny |
-| Brak zgody na scipy | – | wszystko w `numpy.fft` (już tak zaplanowane) |
-| Wydajność | > 1 min na segment | filtr kierunkowy na obrazie zdecymowanym, przetwarzanie oknami, cache etapów |
+| Thin lines get lost in noise | low `car` recall | longer kernels, log compression, masking of strong lines, global `hough_line`, less decimation |
+| Many false lines | low precision | stricter f-k filter, minimum channel extent, velocity plausibility filter, higher `high` hysteresis threshold |
+| Thick lines split into many | multiple objects on one tram | larger `tol_*` in grouping, morphological closing in 6A |
+| Crossing lines | merged objects | direction separation in f-k (already planned), RANSAC during tracking |
+| FFT edge artifacts | false lines at segment edges | `pad_files=1`, Tukey window, spatial padding |
+| No permission for scipy | – | everything in `numpy.fft` (already planned this way) |
+| Performance | > 1 min per segment | directional filter on the decimated image, windowed processing, stage cache |
 
 ---
 
-## 6. Struktura repozytorium
+## 6. Repository structure
 
 ```
 Object_detection_from_DAS/
-├── plan.md                      # ten plan
-├── README.md                    # instalacja, uruchomienie, układ katalogów
-├── pyproject.toml, uv.lock, .python-version   # uv: zależności, lockfile, wersja Pythona
-├── requirements.txt             # eksport z uv (dla instalacji przez pip)
-├── .gitignore                   # m.in. .venv/, dane, outputs/
-├── Project 1 2026.pdf           # treść zadania
+├── plan.md                      # this plan
+├── README.md                    # installation, usage, directory layout
+├── pyproject.toml, uv.lock, .python-version   # uv: dependencies, lockfile, Python version
+├── requirements.txt             # export from uv (for installation with pip)
+├── .gitignore                   # incl. .venv/, data, outputs/
+├── Project 1 2026.pdf           # project brief
 ├── data/
-│   ├── README.md                # opis danych i ekstrakcji
-│   ├── 20240507.rar, Synthetic Dataset.zip   # (ignorowane przez git)
-│   ├── real/                    # 259 × HHMMSS.npy        (ignorowane)
-│   ├── synthetic/               # {id}_signal/_ground_truth/_metadata (ignorowane)
-│   └── annotations/manual_labels.json        # ręczne adnotacje (wersjonowane)
+│   ├── README.md                # data description and extraction
+│   ├── 20240507.rar, Synthetic Dataset.zip   # (ignored by git)
+│   ├── real/                    # 259 × HHMMSS.npy        (ignored)
+│   ├── synthetic/               # {id}_signal/_ground_truth/_metadata (ignored)
+│   └── annotations/manual_labels.json        # manual annotations (versioned)
 ├── src/das/
-│   ├── config.py                # stałe, ścieżki, SEGMENTS, dataclassy parametrów   (Etap 1)
-│   ├── io.py                    # wczytywanie, ciągłość, segmenty                    (Etap 1)
-│   ├── stats.py                 # EDA, statystyki strumieniowe                        (Etap 2)
-│   ├── spectral.py              # FFT per kanał, Welch, STFT, f-k                     (Etap 3)
-│   ├── preprocessing.py         # filtracja, obwiednia, decymacja, normalizacja       (Etap 4)
-│   ├── enhancement.py           # filtr f-k wachlarzowy, bank filtrów kierunkowych    (Etap 5)
-│   ├── detection.py             # ścieżka strong (6A) i weak (6B), Hough              (Etap 6)
-│   ├── grouping.py              # grupowanie kandydatów, DetectedObject               (Etap 7)
-│   ├── velocity.py              # prędkość, konwersje                                 (Etap 8)
-│   ├── tracking.py              # śledzenie grzbietu, v(t)                            (Etap 9)
-│   ├── features.py              # cechy obiektów                                      (Etap 10)
-│   ├── clustering.py            # cv2.kmeans, silhouette, PCA                         (Etap 10)
-│   ├── evaluation.py            # metryki vs GT / adnotacje                           (Etap 11)
-│   ├── visualization.py         # wszystkie wykresy                                   (cały projekt)
-│   └── pipeline.py              # orkiestracja end-to-end                             (Etap 12)
+│   ├── config.py                # constants, paths, SEGMENTS, parameter dataclasses  (Stage 1)
+│   ├── io.py                    # loading, continuity, segments                      (Stage 1)
+│   ├── stats.py                 # EDA, streaming statistics                          (Stage 2)
+│   ├── spectral.py              # per-channel FFT, Welch, STFT, f-k                  (Stage 3)
+│   ├── preprocessing.py         # filtering, envelope, decimation, normalization     (Stage 4)
+│   ├── enhancement.py           # f-k fan filter, directional filter bank            (Stage 5)
+│   ├── detection.py             # strong (6A) and weak (6B) paths, Hough             (Stage 6)
+│   ├── grouping.py              # candidate grouping, DetectedObject                 (Stage 7)
+│   ├── velocity.py              # velocity, unit conversions                         (Stage 8)
+│   ├── tracking.py              # ridge tracking, v(t)                               (Stage 9)
+│   ├── features.py              # object features                                    (Stage 10)
+│   ├── clustering.py            # cv2.kmeans, silhouette, PCA                        (Stage 10)
+│   ├── evaluation.py            # metrics vs GT / annotations                        (Stage 11)
+│   ├── visualization.py         # all plots                                          (whole project)
+│   └── pipeline.py              # end-to-end orchestration                           (Stage 12)
 ├── scripts/                     # extract_data, run_eda, run_spectral, run_pipeline,
 │                                # evaluate_synthetic, annotate_real, tune_parameters,
 │                                # run_clustering, make_report_figures
-├── tests/                       # testy jednostkowe per moduł
-├── notebooks/                   # notatniki eksploracyjne (01_eda, 02_spectral, 03_detection_dev …)
+├── tests/                       # unit tests per module
+├── notebooks/                   # exploratory notebooks (01_eda, 02_spectral, 03_detection_dev …)
 ├── report/
-│   ├── report.ipynb             # raport końcowy (szkielet sekcji gotowy)
-│   └── figures/                 # rysunki do raportu (zmniejszone)
+│   ├── report.ipynb             # final report (section skeleton ready)
+│   └── figures/                 # report figures (downscaled)
 ├── docs/
-│   ├── flowchart.md             # schemat blokowy (mermaid)
-│   ├── experiments_log.md       # dziennik eksperymentów
-│   └── references.md            # źródła
-└── outputs/                     # wyniki generowane (ignorowane): figures/, results/, cache/
+│   ├── flowchart.md             # block diagram (mermaid)
+│   ├── experiments_log.md       # experiments log
+│   └── references.md            # sources
+└── outputs/                     # generated results (ignored): figures/, results/, cache/
 ```

@@ -1,4 +1,4 @@
-"""Quantitative evaluation: synthetic ground truth and manual real-data labels (plan: Etap 11)."""
+"""Quantitative evaluation: synthetic ground truth and manual real-data labels (plan: Stage 11)."""
 from __future__ import annotations
 
 import numpy as np

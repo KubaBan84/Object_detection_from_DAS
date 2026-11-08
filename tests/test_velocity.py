@@ -1,4 +1,4 @@
-"""Known slope -> known velocity in km/h; sign convention (Etap 8)."""
+"""Known slope -> known velocity in km/h; sign convention (Stage 8)."""
 import pytest
 
 

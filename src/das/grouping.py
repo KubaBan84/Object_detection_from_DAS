@@ -1,4 +1,4 @@
-"""Grouping of line candidates into objects and averaging of each group (plan: Etap 7)."""
+"""Grouping of line candidates into objects and averaging of each group (plan: Stage 7)."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field

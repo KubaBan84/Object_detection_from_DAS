@@ -1,6 +1,6 @@
 """Interactive matplotlib tool (ginput) to click start/end points of visible lines in a real segment -> data/annotations/manual_labels.json.
 
-Plan: Etap 11.
+Plan: Stage 11.
 """
 from __future__ import annotations
 

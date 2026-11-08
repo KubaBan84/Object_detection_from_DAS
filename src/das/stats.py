@@ -1,4 +1,4 @@
-"""Exploratory statistics of the whole dataset and of segments (plan: Etap 2)."""
+"""Exploratory statistics of the whole dataset and of segments (plan: Stage 2)."""
 from __future__ import annotations
 
 import numpy as np
