@@ -15,19 +15,19 @@
 | 3 | Frequency analysis: **FFT applied independently to each channel**, STFT | 3 ✅ | `das/spectral.py`, `scripts/run_spectral.py` |
 | 4 | Noise filtering: frequency band, downsampling, filters, standardization | 4 ✅ | `das/preprocessing.py` |
 | 5 | Processing so that **only moving objects** are visible | 5 ✅ | `das/enhancement.py`, `scripts/run_enhancement.py` |
-| 6 | Detection of **thick lines (tram/truck)** | 6A | `das/detection.py` |
-| 7 | Detection of **thin, weak lines (cars)** – **grade-5 condition** | 6B | `das/detection.py` |
-| 8 | Grouping of candidates and averaging the line within a group | 7 | `das/grouping.py` |
-| 9 | Velocity of each object (km/h, direction) | 8 | `das/velocity.py` |
-| 10 | (Extra 1) plot of **velocity over time** | 9 | `das/tracking.py` |
-| 11 | (Extra 2) **clustering** of objects (thick/thin, constant/varying speed, shape) | 10 | `das/features.py`, `das/clustering.py` |
-| 12 | Assessment of the number and accuracy of detected objects | 11 | `das/evaluation.py` |
-| 13 | Block diagram of the algorithm with step descriptions | 14 | `docs/flowchart.md` → `report/figures/flowchart.png` |
-| 14 | "Before/after" visualizations for each step, including removed noise | 4–6, 14 | `das/visualization.py` |
-| 15 | Detailed results for 3 two-minute segments | 12 | `scripts/run_pipeline.py` |
-| 16 | Description of experiments (successful and unsuccessful), errors and limitations | 13 | `docs/experiments_log.md` |
-| 17 | Sources of data, code and inspiration | 14 | `docs/references.md` |
-| 18 | Code without errors or warnings, vectorized, readable | all | `tests/`, `pyproject.toml` (`filterwarnings=error`) |
+| 6 | Detection of **thick lines (tram/truck)** | 6A ✅ | `das/detection.py`, `scripts/run_detection.py` |
+| 7 | Detection of **thin, weak lines (cars)** – **grade-5 condition** | 6B ✅ | `das/detection.py` |
+| 8 | Grouping of candidates and averaging the line within a group | 7 ✅ | `das/grouping.py` |
+| 9 | Velocity of each object (km/h, direction) | 8 ✅ | `das/velocity.py`, `scripts/run_velocity.py` |
+| 10 | (Extra 1) plot of **velocity over time** | 9 ✅ | `das/tracking.py` |
+| 11 | (Extra 2) **clustering** of objects (thick/thin, constant/varying speed, shape) | 10 ✅ | `das/features.py`, `das/clustering.py`, `scripts/run_clustering.py` |
+| 12 | Assessment of the number and accuracy of detected objects | 11 ✅ | `das/evaluation.py`, `scripts/evaluate_*.py`, `scripts/annotate_real.py` |
+| 13 | Block diagram of the algorithm with step descriptions | 14 ✅ | `docs/flowchart.md` → `report/figures/flowchart.png` |
+| 14 | "Before/after" visualizations for each step, including removed noise | 4–6, 14 ✅ | `das/visualization.py` |
+| 15 | Detailed results for 3 two-minute segments | 12 ✅ | `scripts/run_pipeline.py` |
+| 16 | Description of experiments (successful and unsuccessful), errors and limitations | 13 ✅ | `docs/experiments_log.md` |
+| 17 | Sources of data, code and inspiration | 14 ✅ | `docs/references.md` |
+| 18 | Code without errors or warnings, vectorized, readable | all, 15 ✅ | `tests/`, `pyproject.toml` (`filterwarnings=error`) |
 
 **Technology constraints.** The algorithm may only use **NumPy, OpenCV, scikit-image, Matplotlib and Pillow**.
 Neural networks are not allowed.
@@ -420,244 +420,525 @@ It runs on both band images, so a segment produces **4 maps**: HF±, LF±. Time 
 - `synthetic_40.png` compares the result with the GT;
 - the variant study is in `variant_study.png`, `enhancement_variants.csv` and `enhancement_summary.json`.
 
-### Stage 6 – Line detection: two processing paths
+### Stage 6 – Line detection: two processing paths ✅ DONE (09.11.2026)
 
-**Files:** `src/das/detection.py`, `tests/test_detection.py`.
+**Files:**
+- `src/das/detection.py`;
+- `src/das/evaluation.py`: object-level helpers implemented early from Stage 11 (`gt_objects_from_mask`, `match_detections`, `detection_metrics`, `velocity_errors`);
+- `src/das/velocity.py`: `slope_to_velocity`; `src/das/visualization.py`: `plot_segments`, `plot_detections`;
+- `scripts/run_detection.py` (Stages 6 and 7 together);
+- tests: `tests/test_detection.py` (13), `tests/test_evaluation.py` (3), `tests/test_velocity.py` (1).
 
-Each path is run separately for direction +1 and −1.
-**Update after Stage 3:**
-- 6A (strong lines) runs on the **HF** image.
-- 6B (weak lines) runs on **both** the HF and the **LF** image. LF gives the sharpest car lines and the most precise velocities, but it does not see x < 55 m or some lanes.
-- Stage 7 merges the candidates from both bands. When an object is found in both, keep the LF geometry (thinner line) and record which bands detected it; this is also a clustering feature.
+Run: `uv run python -W error scripts/run_detection.py` (≈1 min of figures + ≈6 min variant study; `--skip-variants` skips it).
+Detection takes ≈1 s per 2-minute segment (all 4 maps); grouping ≈0.01 s.
 
-**Inputs from Stage 5:** `Enhanced.response[±1]` for HF and LF.
-- These are robust-z maps of 3000 × 416 px, with 0.04 s per row and 0.64 m per column. Thresholds can therefore be expressed directly in σ.
-- `Enhanced.angle_index[d]` / `velocities[d]` give a per-pixel slope, i.e. a velocity estimate. Use it to reject Hough segments whose slope disagrees with the local orientation.
-- Measure the AUC / recall on synthetic data with the helpers in `evaluation.py`.
-- Note: in a direction with little traffic the maps contain a noise texture with z ≈ 2–4.
+Entry point: `detect_candidates(enhanced, DetectionParams, v_range_kmh)` runs both paths on every map (HF±, LF±) and returns `Detections`:
+- `segments`: `LineSegment` list in pixel coordinates, with `source` (`strong` / `weak` = HoughLinesP / `hough_global`), `direction`, `band`, `score` (mean response) and `thickness_px` (strong only);
+- `stages`: binary maps of every step, for the before/after figures;
+- `thresholds`: the data-driven thresholds of every map.
 
-**6A. Thick, strong lines (`detect_strong_lines`)**
+**6A. Thick, strong lines (`detect_strong_lines`), HF maps**
+1. ✅ Threshold = Otsu of the positive response, **floored at 4 σ** (robust σ). Without the floor, Otsu in a direction without trams separates only noise texture.
+   The floor is 4 σ instead of 6 σ so that wide, diffuse lines on real data (z ≈ 4–6) reach this path. Their skeleton in 6B is branched, and Hough fails on it (log #21, #27).
+2. ✅ Union of binary openings with line structuring elements of 9 admissible slopes (41 px). This removes specks and horizontal/vertical streaks.
+3. ✅ `label` + `regionprops`: area ≥ 1500 px and extent ≥ 40 m.
+4. ✅ **Ridge** (local maxima along time, NMS ±5 rows) + **sequential RANSAC** (`LineModelND`, up to 4 lines per component), so two trams touching in the mask give two lines.
+   A later line that overlaps no accepted line in x is the bent continuation of a line (near the cable ends). It only extends that line.
+   The first version, with per-column centroids, failed for touching trams (log #19).
+5. ✅ Thickness = mean number of component pixels per column assigned to the line. The kept components form the **strong mask**.
 
-1. Otsu thresholding (`skimage.filters.threshold_otsu`) on the response image. Alternatively a k·σ_robust threshold (`robust_noise_sigma`).
-2. Morphological opening with a linear structuring element oriented in the dominant direction (several angles, then max).
-   Removes specks and preserves elongated structures.
-3. `skimage.measure.label` + `regionprops`. Reject objects with small area, low eccentricity, wrong orientation or too short a spatial extent (< `min_channels`).
-4. For each component fit a line with RANSAC (`skimage.measure.ransac` + `LineModelND`) on pixels weighted by the response.
-   Additionally compute thickness as area/length.
-5. Return `LineSegment(source="strong")` segments and the **mask of strong objects** (for path 6B).
+**6B. Thin, weak lines (`detect_weak_lines`), HF and LF maps – grade-5 condition**
+1. ✅ The strong mask is dilated by an ellipse of ±12 rows (0.5 s) × ±6 columns (4 m) and replaced by the background median.
+2. ✅ Hysteresis `low = med + 2σ`, `high = med + 4σ` (σ of the background outside the mask) → `remove_small_objects` (150 px) → `skeletonize`.
+3. ✅ `cv2.HoughLinesP` (threshold 30, min length 60 px, gap 20 px, 0.5°) **and** global `hough_line` + `hough_line_peaks`, restricted to the admissible angles.
+   Global lines are cut into segments by their skeleton support (gaps ≤ 60 rows).
+4. ✅ Filters:
+   - slope inside the velocity range of the direction;
+   - **local orientation** from the Stage-5 filter bank within 10° of the segment angle;
+   - mean response ≥ the low threshold.
 
-**6B. Thin, weak lines (`detect_weak_lines`) – grade-5 condition**
+**Results (6 synthetic samples, objects after Stage 7):**
 
-1. Mask out the strong objects. The mask is dilated by `strong_mask_dilation_px`, and the response in the masked area is set to 0.
-   This way a tram's "halo" does not create false weak lines, and the threshold for weak lines can be lowered.
-2. Thresholds are derived from the data: σ = 1.4826·MAD of the background response.
-   `skimage.filters.apply_hysteresis_threshold(low=2σ, high=4σ)` follows a weak but continuous ridge.
-3. `skimage.morphology.remove_small_objects`, then `skeletonize`.
-4. `cv2.HoughLinesP` on the skeleton (`threshold`, `minLineLength`, `maxLineGap` from the config).
-   Reject segments with an angle outside the velocity range or with the wrong direction.
-5. Complementary `hough_global`, i.e. `skimage.transform.hough_line` + `hough_line_peaks` with `min_distance`/`min_angle`.
-   Works well for long, straight and very weak lines because it accumulates votes along the whole line.
-   Compare both methods in the report (recall of thin lines on synthetic data).
-6. Optionally, for performance and better locality: process in 30 s time windows with 50% overlap and merge the segments in Stage 7.
+| Variant | recall light (car/van) | recall heavy (tram/truck) | precision | F1 |
+|---|---|---|---|---|
+| strong path only (grade 3/4) | 0.176 | 0.980 | 0.913 | 0.621 |
+| HoughLinesP only | 0.765 | 1.000 | 0.927 | 0.887 |
+| global `hough_line` only | 0.788 | 0.980 | 0.950 | 0.902 |
+| no masking of strong objects | 0.800 | 0.980 | 0.935 | 0.899 |
+| weak path HF only / LF only | 0.412 / 0.812 | 1.000 / 0.980 | 0.913 / 0.936 | 0.743 / 0.903 |
+| **FINAL** | **0.882 (75/85)** | **1.000 (49/49)** | **0.932** | **0.929** |
 
-Test: an image with one thick and one thin line (SNR ≈ 1.5) + noise. Both lines must be detected, the thin one via path 6B.
+- DoD targets met: car recall ≥ ~0.8 and tram recall 1.0.
+- Missed cars: visible for < 5 s at the record end, very slow or with strongly varying speed (≤ 30 km/h), and one at 110 km/h.
+- `kind` strong/weak = **detection path**, not vehicle type. In a direction without trams, a clear car line passes the strong threshold (13 of 70 matched cars).
+  Neither ridge score nor thickness separates cars from trams at this stage (log #22). The thick/thin label is left to clustering (Stage 10); recall is always reported per GT type.
 
-**DoD:**
-- on synthetic data recall ≥ ~0.8 for `car` and ≈ 1.0 for `tram` (indicative targets; actual values are reported);
-- on real segments most thin lines are visibly detected.
+**Real segments:** `seg_kuba` 17 objects (14 strong, 3 weak), `seg_mateusz` 24 (22 + 2), `seg_own` 23 (18 + 5).
+- Figures in `outputs/figures/detection/<seg>/`: `stage6_<band>_<pos|neg>.png` (every step of 6A and 6B), `candidates_groups_objects.png`, `objects.png`.
+- Table: `outputs/results/detection_objects_<seg>.csv`.
+- Limitation: in dense areas, crossings with a strong line of the opposite direction leave short fragments, because the f-k direction separation is imperfect there.
 
-### Stage 7 – Grouping candidates and averaging lines
+### Stage 7 – Grouping candidates and averaging lines ✅ DONE (09.11.2026)
 
-**Files:** `src/das/grouping.py`.
+**Files:** `src/das/grouping.py`, `tests/test_grouping.py` (15 tests).
+Entry point: `build_objects(segments, GroupingParams, row_dt, col_dx, x_ref_m, channel_dx_m)` → (objects, groups).
 
-1. Describe each segment in physical space by the pair **(v [km/h], t_ref [s])**, where t_ref is the time of crossing the middle of the cable (`segment_to_params`).
-   This parametrization does not depend on segment length.
-2. `group_segments`:
-   - pairwise distance matrix (vectorized); link when |Δv| < `tol_velocity_kmh` (or relatively < 15%) and |Δt_ref| < `tol_time_s`;
-   - groups are connected components (union-find or `skimage.measure.label` on the adjacency matrix).
-   This merges:
-   - double edges of a thick line;
-   - broken fragments of a thin line;
-   - duplicates from time windows;
-   - results of `HoughLinesP` and `hough_line`.
-3. `merge_group`: weighted average (weight = length × mean response) or refitting a line to all endpoints and pixels of the group.
-   The result is one `DetectedObject` with an extent (x_start..x_end, t_start..t_end).
-4. `remove_duplicates`: if a "weak" object overlaps a "strong" one, the strong one is kept.
-   Reject objects spanning < `min_channels` channels or with velocity outside 5–150 km/h (plausibility filter).
-5. `kind` label (strong/weak): based on the source path, corrected by thickness and energy (Stage 10).
+1. ✅ Pixel → physical convention, as in `plot_waterfall`: t = (r + 0.5) row_dt, x = (c + 0.5) col_dx. A line is t(x) = t_c + p (x − x_c), and v = 1/p.
+   `segment_to_params` gives (v, t_ref) at the cable middle, independent of which fragment was detected.
+2. ✅ `link_matrix` (vectorised, N × N) links two candidates of the same direction when either holds:
+   - **same line**: |Δv| < 8 km/h or < 15 %, and the time gap at the midpoint between the segments < tol;
+   - **continuation**: the x-ranges follow each other (gap −20…+20 m), the lines meet at the junction (time gap < tol), and the velocity ratio is ≤ 2.
+     This joins pieces of bent trajectories (braking, line ends). Without it, FP rises from 9 to 17.
 
-**DoD:** one line per vehicle; no multiple lines on a tram; a "candidates → groups → mean line" figure.
+   tol = max(1 s, ½ thickness of a strong candidate), so edge segments of a tram join the tram.
+   *Stage 13: tol_time_s raised to 1.5 s (real fragments merged, synthetic unchanged, log #59).*
+   Groups come from `connected_components` (min-label propagation, no scipy).
+3. ✅ `merge_group`: robust weighted LSQ of t(x) on points sampled along all segments.
+   - Weight = score × band weight, with **LF ×2**; points are re-weighted with a 3σ-MAD rule.
+   - Object extent = inlier extent.
+   - Stored: `support_m` (union of the candidate x-ranges), `fit_rms_s`, `bands`, `sources`, `thickness_s` and `kind` (strong if any candidate is strong).
+4. ✅ `remove_duplicates`:
+   - duplicates: same direction, overlap ≥ 50 % of the shorter object, and lines within tol at both ends of the overlap → keep the strong one, then the one with larger support × score;
+   - plausibility: extent ≥ 8 channels and 5 ≤ |v| ≤ 150 km/h;
+   - a **weak object must be long (support ≥ 60 m) OR clearly above the noise (score ≥ 5 σ)**.
 
-### Stage 8 – Velocity estimation
+   Statistics behind the rule (log #29), as median support / z:
+   - synthetic TP 229 m / 8.9;
+   - synthetic FP 43 m / 4.0;
+   - real weak objects before the rule 49 m / 4.1 (noise texture of the quiet direction).
+5. ✅ Objects are renumbered by t_ref, and the per-segment table goes to `outputs/results/detection_objects_<seg>.csv`.
 
-**Files:** `src/das/velocity.py`, `tests/test_velocity.py`.
+Velocity |v| MAE of matched synthetic objects: **2.9 km/h** (MAPE ≈ 4 %). Band weight LF ×1 / ×2 / ×4 changes it by only 0.04 km/h.
 
-1. `slope_to_velocity`: v = (Δcol·col_dx)/(Δrow·row_dt) [m/s], then ×3.6 → km/h.
+**DoD:** ✅
+- one line per vehicle (one per tram, also for touching trams);
+- "candidates → groups → mean line" figure for every real segment and every synthetic sample;
+- variant study in `outputs/results/detection_variants.csv`, `detection_summary.json` and `outputs/figures/detection/variant_study.png`;
+- experiments in `docs/experiments_log.md` #18–#30.
+
+Open point for Stage 11: tol_time 1.5 s merges 12 more real objects (synthetic unchanged). The annotations should show whether these are fragments or close cars.
+→ Resolved (Stage 11, 11.11): no missed label lies near a matched one (≥ 4.9 s), so close cars are not merged. 19 of the 24 false positives are still fragments on a labelled line, so there is rather too little merging than too much.
+
+### Stage 8 – Velocity estimation ✅ DONE (09.11.2026)
+
+**Files:**
+- `src/das/velocity.py`;
+- `src/das/visualization.py`: `plot_detections`;
+- `scripts/run_velocity.py` (Stages 8 and 9 together);
+- `tests/test_velocity.py` (4 tests).
+
+Run: `uv run python -W error scripts/run_velocity.py` (≈1.5 min of figures + ≈4 min variant study; `--skip-variants` skips it).
+
+1. ✅ `slope_to_velocity`: v = (Δcol·col_dx)/(Δrow·row_dt) [m/s], then ×3.6 → km/h.
    The sign gives the direction (+ towards increasing cable position).
-2. `fit_constant_velocity`: fit a least-squares line to the tracking points (Stage 9) and report R².
-   This velocity is more accurate than Hough alone and is the one reported in the tables.
-3. Visualization as in the brief's figure: red lines on the waterfall, label "xx.xx km/h".
-   Strong lines are drawn solid, weak lines dashed. Time axis in HH:MM:SS format, space axis in metres.
-4. Per-segment object table (CSV): id, kind, direction, v [km/h], t_start, t_end, x_start, x_end, score, R².
+2. ✅ `fit_constant_velocity`: least-squares fit x(t) = v·t + b to the tracking points (Stage 9), returning (v, b, R²).
+   - This **track velocity** is the one reported in the tables (`reported_velocity_kmh`). The Stage-7 line velocity is the fallback for objects without a track.
+   - Synthetic: |v| MAE **2.89 → 1.86 km/h** (light 2.23, heavy 1.29; MAPE ≈ 3 %), all 124 matched objects tracked.
+   - Real: 62 of 64 objects tracked, median R² 0.99.
+3. ✅ Visualization as in the brief's figure (`plot_detections`, `outputs/figures/velocity/<seg>/velocities.png`):
+   - red lines on the raw waterfall with the label "xx.xx km/h";
+   - strong lines solid, weak lines dashed;
+   - time axis in HH:MM:SS, space axis in metres.
+4. ✅ Per-segment object table (`velocity.write_objects_csv` → `outputs/results/velocity_objects_<seg>.csv`; Stage 6–7 tables use the same writer).
+   Columns: id, kind, direction, velocity (track fit), line velocity, **R²**, speed class, acceleration, v_start / v_end, v_std, t_ref (also as clock time), t/x extent, track points, support, score, thickness, bands, sources.
 
-Test: a line with a known slope gives a known velocity; the sign convention matches `direction` from the synthetic metadata.
+Tests: ✅ known slope → known velocity, sign convention, known line → v and R² = 1, noisy line → R² < 1, reported-velocity fallback, CSV round trip.
+The sign convention also matches `direction` for all 134 synthetic vehicles.
 
-**DoD:** for synthetic data, velocity MAE reported per vehicle type; for real data, tables and figures.
+**DoD:** ✅ velocity MAE per vehicle type on synthetic data; tables and figures for the 3 real segments.
 
-### Stage 9 – (Extra 1) Tracking and velocity over time
+### Stage 9 – (Extra 1) Tracking and velocity over time ✅ DONE (09.11.2026)
 
-**Files:** `src/das/tracking.py`, `visualization.plot_velocity_profiles`.
+**Files:**
+- `src/das/tracking.py`;
+- `src/das/pipeline.py`: `run_pipeline`, `run_segment`, `retrack` (Stages 4 → 9; implemented early from Stage 12, completed in Stage 12 with features, `save_result`, `load_cache`);
+- `src/das/evaluation.py`: `profile_errors`;
+- `src/das/visualization.py`: `plot_velocity_profiles`, `plot_profile_gallery`, tracks in `plot_detections`;
+- `tests/test_tracking.py` (10 tests, 11 cases).
 
-1. `track_ridge`:
-   - for each object and each channel in its extent, compute the predicted time from the mean line;
-   - find the energy maximum in a ±`search_halfwidth_s` window (vectorized argmax on the cut-out band);
-   - refine the position by parabolic interpolation (sub-sample).
-   The output is a set of points (x_m, t_s).
-2. `fit_trajectory_ransac`: reject outliers, e.g. a crossing with another vehicle.
-3. `velocity_profile`: local slope dx/dt in a sliding window of `velocity_window_channels` (smoothed gradient or local linear regression).
-   The output is v(t) in km/h.
-4. `speed_variability`:
-   - comparison of residuals of linear and quadratic fits (x(t) = a t² + b t + c);
-   - standard deviation of v(t) and mean acceleration.
-   Used for the "constant / varying speed" label.
-5. v(t) plot: separate panels for several objects and a combined plot per segment coloured by cluster.
-   Draw non-linear (curved) trajectories on the waterfall.
+Entry point: `track_objects(objects, enhanced, TrackingParams, row_dt)` fills, for every object, `track` (N × [x, t]), `v_track_kmh`, `r2`, `accel_ms2`, `v_start_kmh`, `v_end_kmh`, `v_std_kmh`, `speed_class` and `profile` (M × [t, x, v]).
+It takes ≈0.05 s per segment.
 
-**DoD:** a v(t) plot for every object in every segment; identified braking and acceleration cases (e.g. at an intersection or a stop).
+1. ✅ `track_ridge`, two passes, one passage time per cable channel:
+   - **map**: the f-k filtered map of the object's direction (Stage 5), robust z, sum of the HF and LF z maps, Gaussian along time (1 row).
+     The filter-bank response straightens curved tracks: v(t) MAE 5.33 vs 2.29 km/h (log #32). HF only gives 3.41 and LF only 4.35 (log #33).
+   - **pass 1** (`ridge_times`, vectorised over channels): argmax in ±1 s around the averaged Stage-7 line, refined by a parabola through the peak and its neighbours.
+     Peaks on the window edge are invalid. A centroid refinement was tested and rejected (log #35).
+   - channels within the object extent ± 30 m are searched; peaks below z 1.5 are dropped.
+2. ✅ `fit_trajectory_ransac`: RANSAC of a **quadratic t(x)**, i.e. constant acceleration (residual 0.3 s, 200 trials).
+   It is solved for all trials at once with batched Vandermonde solves. It rejects e.g. a crossing vehicle.
+   **Pass 2** searches ±0.5 s around the curve and keeps the longest run of channels (gaps ≤ 3).
+   Order 1 cannot follow bent tracks; order 3 over-follows noise on real data (log #36).
+3. ✅ `velocity_profile`: local LSQ slope in a sliding window of **9 channels (46 m)** (`sliding_window_view`), reported at the mean time of the window.
+   v(t) MAE against the GT v(t): 5 / 7 / **9** / 11 / 15 channels → 4.31 / 3.01 / **2.29** / 1.87 / 1.46 km/h.
+   9 is a compromise, because the smooth synthetic dynamics always reward smoothing (log #37).
+4. ✅ `speed_variability`: linear vs quadratic x(t). It returns:
+   - the acceleration **along the motion** (+ faster, − braking, for both directions);
+   - v_start / v_end, the RMS of both fits and the std of v(t);
+   - a label: **varying** if |v_end − v_start| ≥ 15 % of |v| AND the quadratic cuts the RMS by ≥ 30 %, else **constant**.
 
-### Stage 10 – (Extra 2) Features and clustering of objects
+   Synthetic results:
+   - acceleration error (median) **0.07 m/s²**;
+   - class agreement with the GT **0.85**; errors are mostly GT-varying → constant (17/64), i.e. conservative.
+5. ✅ Plots (`outputs/figures/velocity/`):
+   - `<seg>/tracks.png`: averaged lines vs measured curved tracks, coloured by speed class;
+   - `<seg>/velocity_profiles.png`: **combined v(t) per segment**, coloured by speed class; Stage 10 can pass cluster colours;
+   - `<seg>/profile_gallery.png`: v(t) per object with constant and quadratic fits;
+   - synthetic: `synthetic_<id>_tracks.png` (with GT tracks) and `synthetic_<id>_profiles.png` (with the GT v(t));
+   - `variant_study.png`.
+   - Results: `velocity_summary.json`, `velocity_variants.csv`, `velocity_synthetic_objects.csv`.
 
-**Files:** `src/das/features.py`, `src/das/clustering.py`, `scripts/run_clustering.py`.
+**DoD:** ✅ a v(t) plot for every object in every segment. Braking and acceleration cases are identified:
+- real: 6 / 10 / 14 varying-speed objects in `seg_kuba` / `seg_mateusz` / `seg_own`;
+- e.g. `seg_own` #14: 95 → 40 km/h, #18: 40 → 57 km/h.
 
-1. Object features (`object_features`):
-   - **geometry:** |v|, direction, std of v(t), curvature coefficient (a from the quadratic fit), R², duration, spatial extent;
-   - **line thickness** (`line_thickness`): FWHM of the profile perpendicular to the trajectory [s], averaged over channels;
-   - **energy:** maximum and mean response along the trajectory, total energy;
-   - **spectrum:** spectral centroid and low/high band energy ratio of the raw signal along the trajectory (a window around t(x) for each channel);
-   - **shape:** number of "sub-lines" (e.g. a tram = several bogies or axles, i.e. parallel fringes); transverse autocorrelation profile.
-2. `standardize` (z-score), `choose_k` for k = 2..6 by silhouette (`silhouette_score` in NumPy) and the elbow method (compactness from `cv2.kmeans`).
-3. `kmeans` via `cv2.kmeans` (`KMEANS_PP_CENTERS`, `attempts=10`).
-4. Interpretation:
-   - cluster centroids in physical units;
-   - cluster names, e.g. "thick/fast/constant", "thin/constant", "varying speed";
-   - a gallery of image crops (trajectory thumbnails) for each cluster, i.e. the "shape of the lines".
-5. `pca_2d` (SVD) gives a 2D scatter coloured by cluster.
-   Additionally show simple rules (thickness/energy thresholds) as a baseline for comparison.
-6. Validation on synthetic data: `cluster_purity` against `type` (car/tram/van).
-   On real data: agreement with the manual thick/thin labels (Stage 11).
-7. Clustering is computed on objects from **all 3 segments together** (more samples). Other segments from the continuous run can also be added, which the brief allows.
+Limitations:
+- near crossings and between two close vehicles the track can jump (`seg_kuba` #5, #12: ±20 km/h swings); weak objects have noisier profiles. R² and v_std flag them;
+- the cable section is only ≈260 m, so a profile has 10–40 points.
 
-**DoD:** PCA plot, centroid table, galleries, description of the clusters in the report.
+### Stage 10 – (Extra 2) Features and clustering of objects ✅ DONE (09.11.2026)
 
-### Stage 11 – Quantitative evaluation
+**Files:**
+- `src/das/features.py`, `src/das/clustering.py`;
+- `src/das/visualization.py`: `plot_clusters`, `plot_k_selection`, `plot_cluster_features`, `plot_cluster_gallery`, cluster colours in `plot_detections` / `plot_velocity_profiles`;
+- `scripts/run_clustering.py`;
+- `tests/test_features.py` (7 tests, 9 cases), `tests/test_clustering.py` (10 tests).
 
-**Files:** `src/das/evaluation.py`, `scripts/evaluate_synthetic.py`, `scripts/annotate_real.py`, `data/annotations/manual_labels.json`.
+Run: `uv run python -W error scripts/run_clustering.py` (≈2 min; `--mode joint`, `--k` to override).
 
-1. **Synthetic data:**
-   - `gt_objects_from_mask`: for each `marker_value` take the (x, t) points from the mask, fit a line and derive v_true, t_ref, type and direction;
-     iterate over markers **present in the mask**, not over the metadata list (sample 43 has a vehicle without a mask, see Stage 0);
-   - run the pipeline (dt and dx from metadata; 59 channels, so the code must not assume 52);
-   - `match_detections`: greedy one-to-one matching by cost (|Δt_ref|/tol_t + |Δv|/tol_v) with gating;
-   - `detection_metrics`: TP, FP, FN, precision, recall, F1 **separately for car (thin) and tram (thick)**, as evidence of meeting the grade-5 requirement;
-   - `velocity_errors`: MAE, RMSE, MAPE;
-   - `trajectory_iou` between the mask of detected trajectories and the GT mask (with tolerance).
-2. **Real data (no GT):**
-   - `annotate_real.py`: interactively (`plt.ginput`) mark the start and end of every visible line in the 3 segments, with a thick/thin label;
-   - save to `manual_labels.json` (versioned);
-   - the same metrics as above computed against the annotations. State in the report that this is a subjective assessment (a limitation of the method).
-3. Save results to `outputs/results/eval_*.json` and to tables in the report.
+1. ✅ Object features (`object_features`, vectorised over channels, ≈0.01 s per object):
+   - **cross-profile of the line**: in every channel a ±2 s window of the f-k energy map (HF+LF z) is cut around t(x) and re-centred on the ridge maximum.
+     From it: FWHM thickness `thickness_s` (sub-row interpolation), peak z, area under the profile, **number of sub-lines** (`count_sublines`), tail asymmetry, z in HF and LF;
+   - **spectrum**: the raw signal in a 0.8 s window on the trajectory (all channels at once, rFFT) relative to the median background spectrum of the channel → SNR in LF / HF [dB], LF−HF ratio, spectral centroid of the excess power;
+   - **motion**: |v|, dv_rel = |v_end − v_start| / |v|, std of v(t), |a|, R², plus their logarithms (heavy tails);
+   - geometry / detection: duration, extent, number of channels, strong/weak, score.
+2. ✅ **Feature choice from a separability study** (`clustering_feature_auc.csv`, `feature_separability.png`).
+   AUC on synthetic data, heavy vs light: HF SNR 0.99, peak z 0.97, area 0.97, but FWHM only 0.64.
+   A line *looks* thick because it is strong. Varying vs constant speed: log dv_rel 0.90, log |a| 0.80.
+   LF/HF spectrum, sub-lines, tail asymmetry: ≈0.5, i.e. no information. Sub-lines are not resolved at 0.04 s rows, which is a stated limitation.
+   Final groups (`config.CLUSTER_FEATURE_GROUPS`):
+   - **thickness** = (log peak z, log area, HF SNR);
+   - **speed change** = (log dv_rel, log |a|, log std v(t)).
+3. ✅ Building blocks:
+   - `standardize`: z-score, NaN → centre, clip ±4; robust median/MAD as an option;
+   - `kmeans` = `cv2.kmeans` (k-means++, 10 attempts, seeded; labels sorted by size);
+   - `silhouette_score`: vectorised (D @ one-hot);
+   - `choose_k`: by silhouette, with the compactness for the elbow plot.
+4. ✅ **Factorized clustering** (default, `factorized_kmeans`):
+   - one k-means per property, k ∈ [2, 3] by silhouette;
+   - levels ordered low → high and named (thin / medium thickness / thick, constant / varying speed);
+   - a cluster = the combination of levels, so the names are directly the categories of the brief.
+   A joint k-means on all features (equal group weights, k 2–6 by silhouette, names from mean z) is kept as the comparison (`--mode joint`).
+5. ✅ Validation on synthetic data (133 objects, NumPy `cluster_purity` / `adjusted_rand_index`):
+   - k = 2 × 2: **thin/constant 51, thin/varying 23, thick/constant 25, thick/varying 34**;
+   - thickness level vs heavy/light: purity **0.92**, ARI 0.70; trams in the thick clusters 46/59;
+   - speed level vs GT speed class: purity **0.78**;
+   - 4 clusters vs the 4 GT classes: ARI 0.45, purity 0.73.
+   Rule baseline (Otsu threshold of the line area × Stage-9 speed class): ARI 0.53, close to k-means.
+   Method study (`clustering_study.csv`):
+   - joint k = 4: ARI 0.48;
+   - joint k by silhouette: k = 2, which only finds thick / thin;
+   - adding velocity + spectrum + shape: ARI 0.12 (noise features destroy the structure);
+   - linear speed-change features: ARI 0.41.
+6. ✅ Real data (64 objects of the 3 segments together): silhouette chooses 3 thickness levels × 2 speed levels → 6 clusters:
+   - thin/constant 4, thin/varying 13;
+   - medium/constant 9, medium/varying 22;
+   - thick/constant 6, thick/varying 10.
+   The thick clusters have FWHM ≈1.8–1.9 s vs 1.1–1.3 s, and HF SNR 28–30 vs 14 dB for the thin ones. The speed level agrees with the Stage-9 class for 73 % of objects.
+   Agreement with the manual thick/thin labels (Stage 11, 40 objects): the single features separate them (AUC z_hf 0.84, peak z 0.83, FWHM 0.78), but the k-means thickness level does not (ARI ≈ 0), because HF SNR is not informative on real data (AUC 0.54). See Stage 11.
+7. ✅ Figures (`outputs/figures/clustering/{real,synthetic}/`):
+   - `pca.png` (PCA via SVD + loadings);
+   - `k_selection.png` (silhouette + elbow per property);
+   - `features.png` (box plots per cluster);
+   - `gallery.png`: straightened lines per cluster, the "shape of the lines";
+   - `real/<seg>_clusters.png`: waterfall + v(t) coloured by cluster.
+   Tables: `clustering_real_objects.csv`, `clustering_real_centroids.csv`, the synthetic versions, `clustering_summary.json`.
 
-**DoD:** a metrics table for the 6 synthetic samples and the 3 real segments, split into thick and thin.
+**DoD:** ✅ PCA plot, centroid table, galleries; cluster description ready for the report (above + log #42–#47).
 
-### Stage 12 – End-to-end pipeline and results for 3 segments
+Limitations:
+- with only 64 real objects and a continuum of speed changes, the silhouette is low (0.21);
+- the clusters describe the signal, not the vehicle type;
+- on real data the thickness level does not match the manual thick/thin labels (ARI ≈ 0, Stage 11): HF SNR does not separate them there.
 
-**Files:** `src/das/pipeline.py`, `scripts/run_pipeline.py`.
+### Stage 11 – Quantitative evaluation ✅ DONE (11.11.2026)
 
-1. `run_pipeline` chains Stages 4→5→6A/6B→7→8→9→10 (features) and times each stage with `time.perf_counter`.
-2. `save_result`:
-   - CSV of objects and JSON with parameters and timings;
-   - optional cache of stages in `.npy`, so the report notebook does not recompute everything.
-3. `run_pipeline.py --segment all` produces, for each segment in the config:
-   - raw waterfall, image after preprocessing, image after f-k (both directions), filter response;
-   - candidates, final result with velocities, v(t) plot, object table;
-   - number of strong/weak objects per direction.
-4. The same script works with `--synthetic <id>` and any `--start HHMMSS`, which shows that the approach is general and nothing is hardcoded.
-5. Performance target: a 2-min segment in ≲ 20–30 s on a laptop. A table of stage timings is reported.
+**Files:**
+- `src/das/evaluation.py`, `src/das/annotation.py`;
+- `scripts/evaluate_synthetic.py`, `scripts/annotate_real.py`, `scripts/evaluate_real.py`;
+- `data/annotations/manual_labels.json`;
+- `tests/test_evaluation.py` (+8 tests), `tests/test_annotation.py` (5 tests).
 
-**DoD:** one command generates the full set of results for all 3 segments without errors or warnings (`uv run python -W error scripts/run_pipeline.py --segment all`).
+1. **Synthetic data** ✅ (`uv run python -W error scripts/evaluate_synthetic.py`, ≈1 min):
+   - ✅ `gt_objects_from_mask` (markers present in the mask), pipeline with dt/dx from the metadata (59 channels);
+   - ✅ `match_detections` (one-to-one, gates 1.5 s / 20 km/h), `detection_metrics`, `velocity_errors` (now also of the reported track velocity);
+   - ✅ `class_metrics`: P / R / F1 **separately for thick and thin**. Class precision uses the detection path (6A = thick, 6B = thin); a thick/thin confusion is computed for matched pairs;
+   - ✅ `trajectory_iou`: detected vs GT trajectories rasterised one pixel per channel (`rasterize_tracks`), dilated ±0.5 s, then IoU; pooled over samples from the overlap counts;
+   - ✅ `summarize_evaluations` (micro-averaged totals) and gate sensitivity (1.0–3.0 s, 10–30 km/h).
 
-### Stage 13 – Parameter tuning, ablation, experiments
+   Result (6 samples, 134 vehicles):
 
-**Files:** `scripts/tune_parameters.py`, `docs/experiments_log.md`.
+   | | recall | precision | F1 | \|v\| MAE |
+   |---|---|---|---|---|
+   | thick (tram/truck) | **1.000** (49/49) | 0.940 | **0.969** | 1.29 km/h |
+   | thin (car/van) | **0.882** (75/85) | 0.924 | **0.903** | 2.23 km/h |
+   | all | 0.925 | 0.932 | **0.929** | 1.86 km/h (MAPE 3.5 %) |
 
-1. Grid over the key parameters (`f_low`/`f_high`, decimation, hysteresis thresholds, kernel length, `tol_*`).
-   We optimize F1 (car + tram) on synthetic data and F1 on the real-data annotations.
-   **We do not tune for individual lines**, because the brief forbids hardcoding.
-2. **Ablation:** switch off in turn common-mode removal, f-k, log compression, the filter bank and masking of strong lines.
-   *The pixel-level ablation of Stages 4–5 is already done (`run_enhancement.py`, Stage 5 table). Stage 13 repeats it at the detection level (recall/F1).*
-   The result is a table of changes in thin-line recall, i.e. evidence of which step is responsible for what.
-3. **Method comparison:**
-   - HoughLinesP vs `hough_line` (global) vs RANSAC on components;
-   - directional filter vs Sato/Meijering vs Gabor;
-   - RMS vs |x|.
-4. Sensitivity analysis: plot of F1 as a function of the hysteresis threshold.
-5. Every attempt (including unsuccessful ones) is recorded in `experiments_log.md`: what, parameters, result, decision.
-   Typical unsuccessful attempts to describe:
-   - Canny + Hough on the raw image (many false lines from stripes);
-   - a single global threshold (misses thin lines);
-   - f-k without padding (edge artifacts).
+   - trajectory IoU 0.63;
+   - 15/75 matched cars come from the strong path (loud cars);
+   - per-sample F1 0.90–0.97;
+   - stable for gates ≥ 1.5 s / 20 km/h; a 10 km/h gate drops thick recall to 0.88, because the line velocity of long trams is off by > 10 km/h before tracking.
+2. **Real data (no GT)** ✅ (11.11.2026; `uv run python -W error scripts/evaluate_real.py`, ≈1 min):
+   - ✅ `annotate_real.py`: a matplotlib GUI on the raw log-RMS waterfall (not the detector output), with `b` switching to the Stage-4 HF/LF images.
+     - Clicks give a polyline; `t` / `n` = thick / thin; undo, delete, scrolling of a 30 s window.
+     - Physical units (x m, t s from the segment start) are stored in `manual_labels.json` together with the annotator.
+     - The labels are saved automatically after every finished / undone / deleted line and when the window is closed.
+     - Fixed 11.11: the tool was not referenced, and matplotlib keeps only weak references to callbacks, so clicks were ignored. A regression test now covers this.
+   - ✅ Labels: 52 lines marked by hand (Kuba) on `seg_kuba` 15, `seg_mateusz` 18, `seg_own` 19.
+     The reference is **indicative only**: rough clicks on a much noisier waterfall than the synthetic one. Therefore:
+     - `split_references` lists but does not score labels with |v| outside the detector fan 5–150 km/h, or shorter than 30 m (`EvaluationParams.ref_v_range_kmh`, `ref_min_extent_m`).
+       This excludes 5 labels: 4 near-horizontal strokes of 187–3147 km/h, i.e. horizontal noise stripes or imprecise clicks, and 1 label of 13 m. **47 labels are scored** (23 thick, 24 thin).
+       Scores with all 52 labels are reported as well;
+     - `false_positive_kinds` splits the false positives into "near a label" (a fragment or duplicate of a labelled vehicle, or a pair rejected by the gates) and "no label" (noise or an unmarked vehicle);
+     - the sensitivity to the matching gates is reported (1.0 s / 15 km/h … 4.0 s / 40 km/h);
+     - the detector is **not** tuned on these labels.
 
-**DoD:** ablation table, method comparison and the final parameter set saved as the defaults in `config.py`.
+   Result (64 detections, 47 scored labels):
 
-### Stage 14 – Report and block diagram
+   | | recall | precision | F1 | \|v\| difference |
+   |---|---|---|---|---|
+   | thick | **0.957** (22/23) | 0.630 | 0.759 | 2.97 km/h |
+   | thin | 0.750 (18/24) | 0.600 | 0.667 | 5.37 km/h |
+   | all | **0.851** (40/47) | 0.625 | **0.721** | 4.05 km/h (MAPE 6.6 %) |
+   | all, incl. the 5 not scored labels | 0.769 | 0.625 | 0.690 | 4.05 km/h |
 
-**Files:** `report/report.ipynb` (section skeleton already created), `scripts/make_report_figures.py`, `docs/flowchart.md`, `docs/references.md`.
+   - per segment F1: `seg_kuba` 0.67, `seg_mateusz` 0.72, `seg_own` 0.76;
+   - trajectory IoU 0.38 (labels are short and drawn by eye);
+   - the result is **independent of the matching gates** (P/R/F1 identical from 1.0 s / 15 km/h to 4.0 s / 40 km/h), so the inaccuracy of the clicks does not change the scores.
 
-1. Submission format: **`report.ipynb` + `report.html`**, via `uv run jupyter nbconvert --to html --execute report/report.ipynb`.
-   Optionally a PDF by printing the HTML to PDF. The `.py` source code from `src/` and `scripts/` is included in full.
-2. Block diagram: export the mermaid diagram from `docs/flowchart.md` to PNG (mermaid.live or draw.io) as `report/figures/flowchart.png`.
-   Add a description for each block: what it does and why.
-3. `make_report_figures.py` regenerates all figures at reduced resolution (dpi ≈ 100–110, waterfall downscaled with `cv2.INTER_AREA`) so the report is not too large.
-4. Report content (the sections already exist in the notebook):
-   1. data;
-   2. EDA;
-   3. frequency analysis;
-   4. block diagram;
-   5. preprocessing with "before/after/removed" images;
-   6. enhancement;
-   7. strong/weak detection and grouping;
-   8. velocities;
-   9. v(t);
-   10. clustering;
-   11. **detailed results for the 3 segments**;
-   12. evaluation, ablation and unsuccessful experiments;
-   13. conclusions, factual and methodological errors, and limitations;
-   14. sources.
-5. Limitations to discuss:
-   - no GT for real data;
-   - vehicles driving side by side or in a convoy merge into one line;
-   - crossing lines;
-   - unknown exact cable geometry (the cable may not run parallel to the road along its entire length, which causes velocity error);
-   - the short cable section (≈260 m) limits the accuracy of v(t);
-   - differences between synthetic and real data.
-6. Sources: data, the course example notebook, library documentation, literature (list in `docs/references.md`; verify bibliographic details before citing).
-   AI tools are also listed if used, with a description of what for.
+   Errors:
+   - **false positives: 19 of 24 lie on a labelled line.** They are fragments or duplicates in the halo of strong lines, e.g. the "X" of crossing fragments next to trams. Only 5 have no label nearby.
+     Counting only those 5, precision would be 40/45 = 0.89, so the low precision is mostly over-segmentation of strong vehicles (an input for Stage 13), not phantom objects;
+   - **missed labels (7):** all are weak, isolated thin lines ≥ 4.9 s from any matched label, 2 of them at the segment edge.
+     This answers the open point of Stage 6: tol_time 1.5 s does not merge close cars;
+   - **thick / thin class:** the detection path (6A strong / 6B weak) puts 14 of 18 matched thin labels on the strong path.
+     Real cars are much louder relative to the background than synthetic ones, so class precision is about 0.6.
+     The class of an object should therefore come from the features or clusters (Stage 10), not from the path;
+   - **velocity:** |v| of the labels differs from the reported velocity by 4.1 km/h (2.97 thick, 5.37 thin), close to the accuracy of a manual slope.
 
-**DoD:** the notebook runs from start to finish without errors; HTML < ~20 MB; every item in the brief's "Report" section is covered.
+   Clusters vs labels (`run_clustering.py`, 40 matched objects):
+   - **single features** separate the manual thick / thin well: AUC z_hf 0.84, log peak z 0.83, FWHM thickness 0.78;
+   - but the HF SNR, the strongest synthetic thickness feature (AUC 0.99), gives only 0.54 on real data (median ≈ 27 dB for both classes);
+   - so the **thickness level of the k-means does not reproduce the manual labels**: ARI ≈ 0.
+     The thick level holds 7 thick + 2 thin, the medium level 10 + 10, and the thin level 5 thick + 6 thin;
+   - this is a limitation, stated in the report: the thickness group was chosen on synthetic data.
+     It is not re-tuned on 40 indicative labels, which would fit the reference itself.
+3. ✅ Results:
+   - synthetic: `outputs/results/eval_synthetic.{csv,json}`, figures `outputs/figures/evaluation/synthetic_*.png`;
+   - real: `eval_real.{csv,json}` (incl. the not scored labels and the gate study), `eval_real_pairs.csv` (label vs detected velocity), `evaluate_real.log`;
+   - real figures: `real_<segment>.png` and `real_summary.png`.
+     Colours: red = matched; orange = FP near a label; magenta = FP without a label; lime / yellow = found / missed label; cyan = not scored.
 
-### Stage 15 – Quality control and submission
+**DoD:** ✅ synthetic metrics table split into thick and thin; ✅ the 3 real segments evaluated against the manual labels (indicative reference, see log #48–#52).
 
-1. `uv run pytest` with `filterwarnings=error`: all tests pass (remove `skip` from the test templates).
-2. Clean clone of the repo: `uv sync`, `uv run python scripts/extract_data.py`, `uv run python scripts/run_pipeline.py --segment all`. Everything passes without manual fixes.
-   Also check the path without uv: `pip install -r requirements.txt && pip install -e .`.
-3. Code review:
-   - no per-pixel loops, no dead code;
-   - docstrings and comments in place;
-   - no hardcoded line positions;
-   - parameters only in `config.py`.
-4. Submission package: `src/`, `scripts/`, `tests/`, `report/report.ipynb`, `report/report.html`, `pyproject.toml`, `uv.lock`, `.python-version`, `requirements.txt`, `README.md`.
-   No data, unless the instructor requires otherwise.
-5. Presentation preparation (26.11 / 01.12): a short demo of `run_pipeline.py` on one segment, key figures, and the ability to justify every step and parameter.
+### Stage 12 – End-to-end pipeline and results for 3 segments ✅ DONE (11.11.2026)
+
+**Files:**
+- `src/das/pipeline.py`: `run_pipeline`, `run_segment`, `PipelineResult.counts`, `result_table`, `stage_images`, `save_result`, `load_cache`;
+- `src/das/clustering.py`: `cluster_objects` (Stage 10 for a list of feature dicts);
+- `scripts/run_pipeline.py`;
+- `tests/test_pipeline.py` (4 tests), `tests/test_clustering.py` (+1 test).
+
+1. ✅ `run_pipeline` chains Stages 4 → 5 → 6A/6B → 7 → 8/9 → 10 (features) and times each stage with `time.perf_counter`.
+   - Timers: `preprocess_s`, `enhance_s`, `detect_s`, `group_s`, `track_s`, `features_s`, plus `total_s` = their sum. The script also measures `load_s`.
+   - The spectral features use the raw samples of the cropped segment (`crop[0]` = padding offset).
+   - `features=False` skips Stage 10, and `keep_stages=False` drops the large images after tracking and features.
+   - Clustering needs many objects, so it runs over all objects of one run (`cluster_objects`, factorized k-means of `ClusteringParams`), not per segment.
+     For `--segment all` it gives exactly the Stage-10 result on real data (k = 3 × 2: 4 / 13 / 9 / 22 / 6 / 10), and for `--synthetic all` the synthetic one (51 / 23 / 25 / 34).
+2. ✅ `save_result(result, name, t0, params, out_dir, cache_dir, extra)`:
+   - `outputs/results/pipeline_<name>_objects.csv`: one row per object with the Stage 7–9 fields (reported velocity, v(t) summary, speed class, times / positions, wall-clock time), 15 Stage-10 features and the cluster name (csv module);
+   - `pipeline_<name>.json`: axes (dt, dx), image shape, timings, counts (strong / weak × direction, speed classes), cluster sizes, all parameters (`asdict(PipelineParams)`) and `extra` (kind, start, duration; on synthetic data the metrics vs GT);
+   - optional `--cache`: `outputs/cache/<name>/<stage>_<band>_<direction>.npy` (raw log RMS, Stage-4 images, f-k maps, responses, float32, ≈ 26 MB per 2-min recording). `load_cache(name)` reads them back for the report notebook.
+3. ✅ `run_pipeline.py --segment all` produces for each segment (`outputs/figures/pipeline/<name>/`):
+   - `01_raw.png`: raw waterfall;
+   - `02_preprocessed.png`: raw vs the HF / LF images of Stage 4;
+   - `03_enhancement.png`: f-k per direction + filter-bank response, HF and LF;
+   - `04_candidates.png`: candidates → groups → one line per vehicle;
+   - `05_result.png`: velocities on the raw waterfall as in the brief, plus the measured tracks coloured by cluster;
+   - `06_velocity.png`: v(t) of every object, coloured by cluster.
+   The object table is printed and saved. The number of strong / weak objects per direction is in the console, the JSON and `pipeline_summary.csv`.
+   The stage timing table is in the console, `pipeline_summary.csv` and `figures/pipeline/timings.png`. Log: `outputs/results/run_pipeline.log`.
+
+   | segment | objects | strong v>0 / v<0 | weak v>0 / v<0 | varying speed |
+   |---|---|---|---|---|
+   | `seg_kuba` | 17 | 3 / 11 | 2 / 1 | 6 |
+   | `seg_mateusz` | 24 | 5 / 17 | 0 / 2 | 10 |
+   | `seg_own` | 23 | 3 / 15 | 0 / 5 | 14 |
+
+   *After Stage 13 (tol_time_s = 1.5 s): `seg_kuba` 15 (strong 2 / 11, weak 2 / 0, 5 varying), `seg_mateusz` 19 (4 / 13, 0 / 2, 9), `seg_own` 18 (2 / 12, 0 / 4, 8); ≈8.6–10 s per segment.*
+4. ✅ Generality: the same script works with `--start HHMMSS [--n-files N]` (any window, e.g. `--start 092002`: 25 objects) and `--synthetic <id>|all`.
+   On synthetic data the GT is overlaid and the metrics are stored (F1 0.90–0.97, |v| MAE 0.9–2.6 km/h per sample, as in Stage 11).
+   Every parameter comes from `config.PipelineParams` and the axes from the data / metadata; nothing is specific to the 3 segments.
+5. ✅ Performance (2-min segment, laptop i5-1235U, 15 W):
+
+   | CPU state | preprocess | enhance | detect | group + track | features | total |
+   |---|---|---|---|---|---|---|
+   | not throttled (6 synthetic + `start_092002`) | 0.8–1.0 s | 5.1–6.2 s | 1.2–1.4 s | 0.1 s | 0.3–0.4 s | **7.7–9.0 s** |
+   | on battery, throttled (3 segments) | 0.9–2.7 s | 8.7–29.6 s | 1.3–5.4 s | 0.1–0.4 s | 0.3–1.0 s | 12.9–38.7 s |
+
+   - The target ≲ 20–30 s is met with a few × margin when the CPU is not throttled.
+   - On battery (balanced power plan, the same code) the CPU is throttled. A 24-kernel benchmark slowed from 0.9 s to 3–4.9 s after a few seconds of load, so the measured times vary 4× between runs.
+   - ≈ 70 % of the time is the Stage-5 directional filter bank (2 bands × 2 directions × 24 kernels, `cv2.filter2D` on the 8× upsampled grid).
+     Cheaper settings (fewer angles, smaller upsampling) change the results, so they are an ablation for Stage 13, not a Stage-12 change.
+
+**DoD:** ✅ `uv run python -W error scripts/run_pipeline.py --segment all` generates the full set of results for the 3 segments (exit 0, no warnings).
+`--synthetic all --no-figures --cache` and `--start 092002` also pass with `-W error`. 159 tests pass.
+
+Notes for Stage 13:
+- v(t) at the edge of an ad-hoc window: an object cut by the window end (`start_092002` #23, t_end = 120.1 s) has v_end 217 km/h. The 3 segments have no such case (padding).
+- Clamping the local profile at the image edge is an option.
+
+### Stage 13 – Parameter tuning, ablation, experiments ✅ DONE (12.11.2026)
+
+**Files:**
+- `scripts/tune_parameters.py` (studies `ablation`, `methods`, `sweep`, `hysteresis`, `grouping`, `combined`; `--quick`, `--jobs`);
+- `src/das/pipeline.py`: `run_pipeline(pre=, enhanced=, detections=)` reuses earlier stages;
+- new options for the ablation: `PreprocessingParams.normalization = "ratio"` (no log compression), `EnhancementParams.fk_pad_mode = "none"`;
+- `src/das/tracking.py` + `TrackingParams.edge_margin_s` (fix of the Stage-12 edge artefact);
+- `docs/experiments_log.md` #54–#60;
+- tests: edge margin (`test_tracking.py`), `ratio` normalisation, f-k without padding, reused stages (`test_pipeline.py`) – 162 tests pass.
+
+Run: `uv run python -W error scripts/tune_parameters.py` (83 variants, 78 distinct, × 9 recordings, ≈16 min with 9 processes on battery).
+Outputs: `outputs/results/tuning_<study>.csv`, `tuning.json`, `tune_parameters.log`, figures `outputs/figures/tuning/`.
+
+1. ✅ **Evaluation:** every variant changes the final parameters in one place. Stages 4 → 9 run on the 6 synthetic samples and the 3 labelled real segments, and the objects are scored with the Stage-11 evaluation.
+   - Runs in parallel per recording. Inside a worker the results of Stages 4 / 5 / 6 are cached per upstream parameters, so a grouping grid costs only grouping + tracking.
+   - **Selection rule:** the synthetic F1 decides. The real F1 only breaks ties between synthetic-equivalent settings (|ΔF1| < 0.005) and vetoes changes that fit only the simulator.
+2. ✅ **Grid / sweep:** band edges, decimation, kernel length, number of angles, upsampling, strong floor, minimal extent / support, hysteresis grid (low × high) and grouping grid (tol_time × tol_v).
+   - The synthetic F1 is maximal at every final value. The hysteresis optimum is 2 / 4 σ, and the real F1 is flat (0.73–0.81) over the grid.
+   - Speed option: 12 angles or ×4 upsampling halve the filter-bank cost at −0.02…−0.03 synthetic F1. Not taken.
+3. ✅ **Ablation at the detection level** (synthetic F1 / thin recall; final 0.929 / 0.882):
+
+   | variant | synthetic F1 | synthetic thin R | real F1 |
+   |---|---|---|---|
+   | final | **0.929** | **0.882** | **0.788** |
+   | no common-mode removal | 0.900 | 0.812 | 0.788 |
+   | no log compression | 0.817 | 0.647 | 0.504 |
+   | no f-k fan filter | 0.893 | 0.800 | 0.557 |
+   | no filter bank | 0.859 | 0.765 | 0.708 |
+   | no masking of strong lines | 0.899 | 0.800 | 0.780 |
+   | no hysteresis (single 4 σ) | 0.903 | 0.812 | 0.783 |
+   | weak path on HF only | 0.740 | 0.412 | 0.809 |
+   | strong path only (grade 3/4) | 0.621 | 0.176 | 0.756 |
+   | no ridge tracking | 0.929 (\|v\| MAE 2.89 vs 1.89) | 0.882 | 0.788 |
+
+4. ✅ **Method comparison** (synthetic / real F1):
+   - HoughLinesP only 0.887 / 0.768; global `hough_line` only 0.902 / 0.809;
+   - Sato 0.663 / 0.337, Meijering 0.580 / 0.217, Gabor 0.476 / 0.257;
+   - mean |x| 0.893, decimation 0.874; robust z 0.935 / 0.772 (loses 2 trams, rejected);
+   - f-k padding reflect 0.914, Tukey 0.903 (real 0.661), none 0.908; fixed 6 σ 0.906 (real thick R 0.78);
+   - **unsuccessful approaches, now measured:** Canny + HoughLinesP on the raw image 0.591 synthetic and **0 correct detections on real data**; on the HF image 0.040 synthetic. Also the single threshold and the f-k filter without padding (above).
+5. ✅ **Final parameters:** the only change is **`GroupingParams.tol_time_s` 1.0 → 1.5 s**.
+   - Synthetic F1 unchanged (0.929). Real F1 0.721 → **0.788**: P 0.625 → 0.750, FP near a label 19 → 10, thick recall unchanged; one thin label of `seg_mateusz` is merged with a neighbour.
+   - This resolves the Stage-6 open point.
+   - Rejected although better on the labels: a strong floor of 5 σ (real 0.817). It loses a real thick line, contradicts log #21 and rests only on the rough labels. Also rejected: 2.0 s and min extent 60 m (both worse on synthetic data).
+   - All results of Stages 6–12 were regenerated with the final parameters. Counts per segment are now 15 / 19 / 18 objects, and clustering gives 6 clusters over 52 objects.
+6. ✅ **Edge artefact of Stage 12 fixed:** peaks within 0.5 s of the first / last image row are dropped in both tracking passes (`edge_margin_s`).
+   - Without the margin a ridge that continues beyond the window has its noisy flank maximum a few rows before the border. This compresses the passage times, and v(t) reached 351 km/h at the end of window 09:20:02.
+   - Synthetic detections are unchanged; |v| MAE 1.86 → 1.89 km/h.
+
+**DoD:** ✅ ablation table, method comparison (incl. the classical baselines) and the final parameter set saved as the defaults in `config.py`. All experiments are in `experiments_log.md`.
+
+### Stage 14 – Report and block diagram ✅ DONE (12.11.2026)
+
+**Files:**
+- `report/report.ipynb` + `report/report.html`;
+- `scripts/make_report_figures.py`;
+- `docs/flowchart.md`, `docs/references.md`;
+- `report/figures/` (67 figures + `flowchart.png`).
+
+1. ✅ Format: `report.ipynb` (executed, with outputs) + `report.html` (15.7 MB < 20 MB).
+   - `uv run jupyter nbconvert --to notebook --execute --inplace report/report.ipynb` and `uv run jupyter nbconvert --to html report/report.ipynb`.
+   - The notebook runs from start to finish without errors.
+   - It displays the figures and reads all tables from `outputs/results/` (no numbers typed into tables).
+   - Section 11 **runs the whole pipeline live on `seg_kuba`** and checks that the result is identical to the saved table.
+   - Appendix B lists the full source code of `src/das/` and `scripts/` (30 files, ≈9.5 k lines); Appendix A shows `experiments_log.md`.
+2. ✅ Block diagram: drawn with matplotlib by `make_report_figures.py` (`report/figures/flowchart.png`), not with mermaid.live or draw.io, so it needs no external tool.
+   - Each block notes what it removes. The mermaid source in `docs/flowchart.md` has the same blocks.
+   - Report section 4 has a description table (what each block does and why).
+3. ✅ `make_report_figures.py`:
+   - `--regenerate` reruns all scripts with `-W error`; `--skip-studies` skips the slow variant studies.
+   - Then it draws the flowchart and copies 67 curated figures downscaled with `cv2.INTER_AREA` to ≤ 1300 px. Files > 150 kB become JPEG (q 82), 8.9 MB in total.
+4. ✅ Report content: all 14 sections of the plan.
+   - Section 11 holds the per-segment results: waterfall, result with velocities and clusters, v(t), object table, counts strong / weak per direction, timings.
+   - Section 12 covers evaluation and the Stage-13 studies, plus a table of unsuccessful approaches.
+   - Section 13 gives conclusions, factual / methodological errors found, and limitations.
+5. ✅ Limitations discussed:
+   - no GT for real data and a subjective reference;
+   - synthetic ≠ real;
+   - convoy / side-by-side vehicles and the halo of trams;
+   - crossings;
+   - unknown cable geometry;
+   - the 266 m section (few v(t) points, LF blind for x < 55 m);
+   - the 5–150 km/h fan;
+   - unresolved sub-lines;
+   - timings depending on the power state.
+6. ✅ Sources (`docs/references.md`, shown in report section 14): data, libraries with the functions used, literature with the place of use, and the AI assistant (Claude / Claude Code) with a description of what it was used for.
+
+**DoD:** ✅ the notebook runs from start to finish without errors; HTML 15.7 MB < ~20 MB; every item of the brief's "Report" section is covered:
+- dataset analysis → sections 2–3;
+- block diagram → 4;
+- before / after visualisations incl. removed components → 5–7;
+- results for 3 segments → 11;
+- analysis, conclusions, errors, limitations → 12–13;
+- references → 14.
+
+Open for Stage 15:
+- the authors' full names on the title cell;
+- a final read of the report text.
+
+### Stage 15 – Quality control and submission ✅ DONE (12.11.2026)
+
+1. ✅ `uv run pytest` with `filterwarnings=error`: **162 passed**.
+   - No `skip` markers are left in the test templates. The only `skipif` markers are the three data-integrity tests of `test_io.py`, which run whenever the data are extracted.
+   - Every script was run with `uv run python -W error` without warnings.
+2. ✅ **Clean copy** of the versioned files plus the two archives in a scratch folder (all work is still uncommitted, so a copy of `git ls-files -co --exclude-standard` was used instead of a clone):
+   - `uv sync` → `extract_data.py` (259 files + 6 samples verified) → `run_pipeline.py --segment all` (≈1 min) → `pytest`: everything passed without manual fixes.
+   - The object tables of the three segments were **byte-identical** to the ones in the repository.
+   - **Path without uv:** fresh `venv`, then `pip install -r requirements.txt && pip install -e .`, then `run_pipeline.py --segment seg_kuba`: OK.
+   - Same versions in all environments: numpy 2.5.4, opencv 5.0.0, scikit-image 0.26.0, matplotlib 3.11.2. `requirements.txt` is identical to a fresh `uv export`.
+3. ✅ **Code review:**
+   - **Loops:** no per-pixel loops. Loops run only over bands, directions, kernels, components, objects, channels with an issue and feature columns.
+   - **Dead code removed:**
+     - stubs `plot_spectra`, `plot_stft`, `plot_fk` in `visualization.py` (they raised `NotImplementedError`);
+     - `velocity.slope_to_velocity` and `ms_to_kmh`, and `grouping.segment_to_params`, which only tests used.
+     - The tests now check `detection.velocity_to_slope` and the vectorised `grouping._segment_arrays` instead.
+   - **Hidden parameter:** the slope tolerance of the velocity fan, `slope_ok(margin=0.1)`, is now `DetectionParams.slope_margin`. It is passed explicitly everywhere, including the Canny baseline of `tune_parameters.py`.
+   - **Docstrings:** added to all parameter dataclasses, `PipelineResult`, `RunningStats.update`, the annotation event handlers, and 51 non-trivial script functions. Each new docstring was checked against the function body.
+   - **No hardcoded lines:** `config.SEGMENTS` defines only the analysis windows. All thresholds are relative to the robust σ of each map, and the same code runs on 59-channel synthetic data and on any window (`--start`).
+   - **Outputs unchanged:** after the changes the three segments give the same objects and velocities.
+   - **Small fix:** `run_pipeline.py --no-figures` no longer prints a figure path.
+   - **Reproducibility observation:**
+     - One real object of `seg_kuba` (#3) lies at the thick / medium boundary of the factorized k-means. It changed its thickness level between two runs of identical code; everything else was identical.
+     - The current code gives the same result in repeated runs (features compared bit by bit across processes).
+     - Recorded as a limitation in report section 13 and in log #62.
+4. ✅ **Submission package:** listed in `README.md` ("Submission package"), as decided with the user (a list, no zip script).
+   - **Included:** `src/`, `scripts/`, `tests/`, `report/report.ipynb` + `report.html` + `report/figures/`, `docs/`, `data/README.md` + `data/annotations/manual_labels.json`, `pyproject.toml`, `uv.lock`, `.python-version`, `requirements.txt`, `README.md`, `plan.md`.
+   - **Not included:** data, `outputs/`, `.venv/` and the brief PDF.
+   - `docs/` and the labels are needed because the notebook and `evaluate_real.py` read them; `plan.md` because the report refers to "Stage N".
+   - `data/README.md` now contains the download links of the brief.
+5. ✅ **Presentation:** `docs/presentation.md` contains:
+   - the live demo (`run_pipeline.py --segment seg_kuba`, alternatives `--start`, `--synthetic`);
+   - a ≈8-minute outline with the figures in `report/figures/`;
+   - a one-line justification with the measured numbers for every step and key parameter.
+
+**Report final read:**
+- The text agrees with the result tables.
+- A note on the "Stage N" / "log #N" numbering was added to the title section, and the borderline-cluster limitation to section 13.
+- The notebook was regenerated and executed: 0 errors, live pipeline identical to the saved table, Appendix B with the current code. `report.html` is 15.7 MB.
+- Authors stay "Kuba and Mateusz" (the user's decision); full names can be added to cell 0 before submission.
+
+**DoD:** ✅ tests and all scripts without errors / warnings; clean setup with uv and with pip; code review done; package list in the README; presentation notes. **Left to the user:** the authors' names (optional), committing / submitting before 22.11.2026 23:59.
 
 ---
 
@@ -668,13 +949,13 @@ Test: a line with a known slope gives a known velocity; the sign convention matc
 | 08–09.11 | 0 ✅, 1 ✅, 2 ✅ | data extracted, loader, EDA, segments chosen |
 | 10.11 | 3 ✅ (08.11) | filter bands justified (LF 1–8 Hz + HF 60–312.5 Hz) |
 | 11–12.11 | 4 ✅, 5 ✅ (08.11) | energy images (HF + LF) + f-k per direction + filter bank; variant study |
-| 13–15.11 | 6, 7, 8 | strong + weak detection, grouping, velocities (**core of grade 5**) |
-| 16.11 | 11 | metrics on synthetic data + annotations of the 3 real segments |
-| 17.11 | 9 | v(t) |
-| 18.11 | 10 | clustering |
-| 19.11 | 12, 13 | full runs, tuning, ablation |
-| 20–21.11 | 14 | report + block diagram |
-| 22.11 | 15 | quality control, **submission before 23:59** |
+| 13–15.11 | 6 ✅, 7 ✅, 8 ✅ (09.11) | strong + weak detection, grouping, velocities (**core of grade 5**) |
+| 16.11 | 11 ✅ (synthetic 09.11, real 11.11) | metrics on synthetic data + annotations of the 3 real segments |
+| 17.11 | 9 ✅ (09.11) | v(t) |
+| 18.11 | 10 ✅ (09.11) | clustering |
+| 19.11 | 12 ✅ (11.11), 13 ✅ (12.11) | full runs, tuning, ablation |
+| 20–21.11 | 14 ✅ (12.11) | report + block diagram |
+| 22.11 | 15 ✅ (12.11) | quality control, **submission before 23:59** |
 | 23–25.11 | – | presentation preparation |
 
 Buffer: if Stage 6B (thin lines) is delayed, it takes priority over Stages 9 and 10, because it is the grade-5 condition, whereas 9 and 10 are extra points.
@@ -737,6 +1018,7 @@ Object_detection_from_DAS/
 │   └── figures/                 # report figures (downscaled)
 ├── docs/
 │   ├── flowchart.md             # block diagram (mermaid)
+│   ├── presentation.md          # demo + talk outline + justification of every step
 │   ├── experiments_log.md       # experiments log
 │   └── references.md            # sources
 └── outputs/                     # generated results (ignored): figures/, results/, cache/

@@ -28,7 +28,7 @@ def _residual_energy(a: np.ndarray, pad_mode: str = "zero") -> float:
 
 
 # ---------------------------------------------------------------- f-k filter
-@pytest.mark.parametrize("pad_mode", ["zero", "reflect", "tukey"])
+@pytest.mark.parametrize("pad_mode", ["zero", "reflect", "tukey", "none"])
 def test_fan_filter_keeps_moving_line_removes_stripes(pad_mode):
     line = _line(-14.0, x0=400.0)               # 50 km/h towards decreasing position
     vertical = np.zeros((T, X))

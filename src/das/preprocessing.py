@@ -176,8 +176,14 @@ def normalize_envelope(env: np.ndarray, method: str, clip_percentile: float,
     """Envelope -> normalised, log-compressed, clipped image.
 
     ``log_ratio``: log10(env / channel median), clipped to [0 (if clip_low), p_hi];
-    ``robust_z``: log1p(max(z, 0)) of the per-channel robust z-score, clipped at p_hi.
+    ``robust_z``: log1p(max(z, 0)) of the per-channel robust z-score, clipped at p_hi;
+    ``ratio``: env / channel median - 1 without log compression (ablation, Stage 13).
     """
+    if method == "ratio":
+        v = np.asarray(env, dtype=np.float64)
+        v = (v + EPS) / (np.median(v, axis=0, keepdims=True) + EPS) - 1.0
+        hi = np.percentile(v, clip_percentile)
+        return np.clip(v, 0.0 if clip_low else v.min(), hi)
     if method == "log_ratio":
         v = log_ratio(env)
         hi = np.percentile(v, clip_percentile)
