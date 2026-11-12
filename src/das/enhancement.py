@@ -80,14 +80,17 @@ def fk_velocity_filter(img: np.ndarray, dt: float, dx: float, v_min: float, v_ma
     - ``reflect``: mirror the image (2 C columns) - a stripe spanning the whole cable then
       has no edges at all, so it does not leak into the fan; the mirrored copy of a line
       has the opposite velocity and is removed by the direction mask / cropped away;
-    - ``tukey``: Tukey taper (alpha 0.2) along space, then zero padding.
+    - ``tukey``: Tukey taper (alpha 0.2) along space, then zero padding;
+    - ``none``: no padding - the FFT wraps the cable ends around (ablation, Stage 13).
 
     The image mean is removed first. Returns an array of img.shape.
     """
     v = np.asarray(img, dtype=np.float64)
     v = v - v.mean()
     n = v.shape[1]
-    if pad_mode == "reflect":
+    if pad_mode == "none":
+        nx = n
+    elif pad_mode == "reflect":
         v, nx = np.concatenate([v, v[:, ::-1]], axis=1), 2 * n
     elif pad_mode == "tukey":
         v, nx = v * tukey_window(n)[None, :], max(pad_x, n)

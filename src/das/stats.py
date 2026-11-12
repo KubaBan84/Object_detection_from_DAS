@@ -182,6 +182,7 @@ class RunningStats:
         self.abs_below = 0  # |x| below the first abs bin edge (e.g. exact zeros)
 
     def update(self, x: np.ndarray) -> None:
+        """Add one (T, n_channels) batch: merge its moments, extrema and histograms."""
         v = np.asarray(x, dtype=np.float64)
         if v.ndim != 2 or v.shape[1] != self.n_channels:
             raise ValueError(f"Expected (T, {self.n_channels}) array, got {v.shape}")

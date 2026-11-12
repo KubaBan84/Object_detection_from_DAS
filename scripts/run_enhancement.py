@@ -105,6 +105,7 @@ def to_jsonable(obj):
 # 1. Figures for the real segments
 # ======================================================================================
 def segment_figures(spec: dict, pp: PreprocessingParams, ep: EnhancementParams, dpi: int) -> dict:
+    """Stages 4-5 on one segment: energy images, f-k maps, filter-bank responses."""
     seg = dio.load_named_segment(spec["name"], pad_files=1)
     out_dir = FIG_DIR / spec["name"]
     title = f"{spec['name']} {seg.start:%H:%M:%S}-{seg.end:%H:%M:%S}"
@@ -201,6 +202,7 @@ def synthetic_figure(pp, ep, dpi) -> dict:
 # 2. Variant study
 # ======================================================================================
 def evaluate(pp: PreprocessingParams, ep: EnhancementParams, synth: list, real: list) -> dict:
+    """Line AUC (synthetic GT) and line SNR (real) of one parameter variant."""
     t0 = time.perf_counter()
     auc = {b: {"light": [], "heavy": []} for b in ("hf", "lf", "fused")}
     for sig, gt, meta in synth:
@@ -224,6 +226,7 @@ def evaluate(pp: PreprocessingParams, ep: EnhancementParams, synth: list, real: 
 
 
 def variant_study(pp0, ep0) -> list[dict]:
+    """Evaluate every preprocessing / enhancement variant."""
     synth = [dio.load_synthetic(s) for s in SYNTH_IDS]
     real = [dio.load_named_segment(s["name"], pad_files=1) for s in config.SEGMENTS]
     rows = []
@@ -238,6 +241,7 @@ def variant_study(pp0, ep0) -> list[dict]:
 
 
 def plot_variants(rows: list[dict], dpi: int) -> None:
+    """AUC and SNR of the enhancement variants."""
     names = [r["variant"] for r in rows]
     y = np.arange(len(rows))
     fig, axes = plt.subplots(1, 3, figsize=(17, 0.38 * len(rows) + 2), sharey=True,

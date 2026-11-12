@@ -116,6 +116,7 @@ def global_pass(files: list[Path]) -> dict:
 
 def global_figures(g: dict, bad: np.ndarray, z: np.ndarray, runs: list[list[Path]],
                    dpi: int) -> None:
+    """Whole-dataset figures: activity timeline, channel profile, per-file RMS, histograms."""
     res = g["running"]
     glob = res["global"]
     n_ch = g["file_rms"].shape[1]
@@ -248,6 +249,7 @@ def global_figures(g: dict, bad: np.ndarray, z: np.ndarray, runs: list[list[Path
 # 2. Per-segment analysis
 # ======================================================================================
 def analyse_segment(spec: dict, g: dict, dpi: int) -> dict:
+    """Statistics and figures of one 2-minute segment (histograms, box plots, correlation)."""
     seg = dio.load_named_segment(spec["name"])
     x = seg.core
     n_ch = x.shape[1]
@@ -410,6 +412,7 @@ def rank_candidates(g: dict, runs: list[list[Path]]) -> list[dict]:
 
 
 def non_overlapping(rows: list[dict], n: int) -> list[dict]:
+    """Pick the first ``n`` rows whose 2-minute windows do not overlap."""
     chosen: list[dict] = []
     for r in rows:
         s = dio.parse_timestamp(r["start"])

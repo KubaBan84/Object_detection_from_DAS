@@ -104,6 +104,7 @@ def band_envelope(seg: dio.Segment, xcm: np.ndarray, band: tuple[float, float]) 
 # 1. Global PSD and tonal lines
 # ======================================================================================
 def global_psd(files: list[Path]) -> tuple[np.ndarray, np.ndarray]:
+    """Mean Welch PSD per channel over many files."""
     acc = None
     for i, f in enumerate(files):
         freqs, psd = spectral.welch_psd(dio.load_real_file(f), FS, nperseg=2048)
@@ -125,6 +126,7 @@ def channel_tonal_lines(freqs: np.ndarray, psd: np.ndarray, prominence_db: float
 
 
 def plot_global_psd(freqs, psd, peaks, ch_lines, dpi) -> None:
+    """Channel x frequency PSD map and the mean spectrum with the found peaks."""
     n_ch = psd.shape[1]
     fig, (a1, a2) = plt.subplots(2, 1, figsize=(12, 9), layout="constrained",
                                  gridspec_kw={"height_ratios": [1.2, 1]})
@@ -193,6 +195,7 @@ def choose_bands(score: np.ndarray) -> tuple[tuple[float, float], tuple[float, f
 
 
 def plot_band_grids(snr: np.ndarray, fan_total: np.ndarray, lf, hf, dpi) -> None:
+    """Line SNR and fan energy fraction over the grid of candidate bands."""
     fig, axes = plt.subplots(1, 2, figsize=(19, 6.5), layout="constrained")
     for ax, grid, title, label in (
             (axes[0], snr, "PRIMARY: line SNR after the f-k fan filter\n"
@@ -276,6 +279,7 @@ def contrast_analysis(specs: list[dict], lf, hf, dpi: int) -> dict:
 # 3. Per-segment analysis
 # ======================================================================================
 def plot_fk(ax, f, k, s, fmax, name):
+    """f-k amplitude map [dB] of one image on ``ax``; returns the image artist."""
     keep = (f >= 0) & (f <= fmax)
     sdb = 20 * np.log10(s[keep] + EPS)
     im = ax.imshow(sdb, aspect="auto", origin="lower", cmap="magma",
@@ -296,6 +300,7 @@ def plot_fk(ax, f, k, s, fmax, name):
 
 
 def analyse_segment(spec: dict, lf, hf, channels: list[int], dpi: int) -> dict:
+    """FFT per channel, STFT and f-k analysis of one segment."""
     seg = dio.load_named_segment(spec["name"], pad_files=1)
     x = seg.core
     n_ch = x.shape[1]

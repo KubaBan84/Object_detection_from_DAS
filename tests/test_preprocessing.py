@@ -100,6 +100,9 @@ def test_log_ratio_and_normalize_envelope():
     img_z = normalize_envelope(env + np.random.default_rng(0).random((100, 3)), "robust_z",
                                99.5, True)
     assert img_z.min() >= 0
+    lin = normalize_envelope(env, "ratio", 100.0, clip_low=True)      # no log compression
+    np.testing.assert_allclose(lin[0], 0.0, atol=1e-9)
+    np.testing.assert_allclose(lin[50], 99.0, rtol=1e-6)
     with pytest.raises(ValueError):
         normalize_envelope(env, "bogus", 99.5, True)
 

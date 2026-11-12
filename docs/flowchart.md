@@ -1,4 +1,8 @@
-# Algorithm flowchart (source for report/figures/flowchart.png)
+# Algorithm flowchart
+
+Mermaid source of the block diagram. The report figure `report/figures/flowchart.png` is drawn
+with matplotlib by `scripts/make_report_figures.py` (same blocks, plus what each block removes),
+so no external tool is needed.
 
 ```mermaid
 flowchart TD
@@ -12,12 +16,20 @@ flowchart TD
     HF3 --> F[f-k fan filter 5-150 km/h, zero padding, separately for direction +1 / -1]
     LF3 --> F
     F --> H[Spatial upsampling x8 + matched line-filter bank: 24 angles, 81 px -> robust z maps HF+/HF-/LF+/LF-]
-    H --> S[Path A on HF: strong lines - Otsu, oriented opening, components, RANSAC]
-    H --> W[Path B on HF and LF: weak lines - mask strong, hysteresis, skeleton, HoughLinesP]
-    S --> M[Grouping of candidates from both bands + average line]
+    H --> S[Path A on HF: strong lines - Otsu threshold floored at 4 sigma, oriented opening, components, ridge NMS + sequential RANSAC]
+    S -->|strong mask, dilated| W
+    H --> W[Path B on HF and LF: weak lines - mask strong, hysteresis 2/4 sigma, skeleton, HoughLinesP + global hough_line, slope + local-orientation check]
+    S --> M[Grouping: link same line - velocity + time gap - or continuation, connected components]
     W --> M
-    M --> V[Velocity km/h per object]
-    V --> T[Ridge tracking -> v t profile]
-    T --> K[Features -> k-means clustering]
-    K --> R[Figures, tables, metrics]
+    M --> MA[Robust weighted average line per group, LF weight x2]
+    MA --> MD[Clean-up: duplicates, min extent, velocity range, weak = long or clearly above noise]
+    MD --> T[Ridge tracking on the f-k map HF+LF: peak per channel around the line, RANSAC quadratic t of x, refine around the curve, drop peaks within 0.5 s of the window edges]
+    T --> V[Velocity: LSQ x of t = v t + b with R2, label km/h]
+    T --> VT[v of t: sliding 9-channel regression; quadratic fit -> acceleration, constant / varying speed]
+    V --> FE[Features per object: line energy + HF SNR on the cross-profile, FWHM, raw spectrum on the track, log speed change]
+    VT --> FE
+    FE --> K[Factorized k-means cv2.kmeans: thickness levels x speed-change levels, k by silhouette -> e.g. thick, varying speed]
+    K --> R[Figures, tables]
+    MD --> EV[Evaluation: one-to-one matching with synthetic GT / manual labels, P/R/F1 thick vs thin, velocity error, trajectory IoU]
+    V --> EV
 ```

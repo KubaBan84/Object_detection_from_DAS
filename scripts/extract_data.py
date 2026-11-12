@@ -51,6 +51,7 @@ def rar_extract_command(archive: Path, out_dir: Path) -> list[str]:
 
 
 def extract_real(force: bool) -> None:
+    """Extract the RAR archive of the real recordings into ``data/real/`` (once)."""
     out_dir = config.REAL_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
     existing = dio.list_real_files(out_dir)
@@ -65,6 +66,7 @@ def extract_real(force: bool) -> None:
 
 
 def extract_synthetic(force: bool) -> None:
+    """Extract the synthetic samples into ``data/synthetic/`` with flat file names."""
     out_dir = config.SYNTH_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
     existing = dio.list_synthetic_ids(out_dir)
@@ -88,6 +90,7 @@ def extract_synthetic(force: bool) -> None:
 # Verification
 # --------------------------------------------------------------------------------------
 def verify_real() -> list[str]:
+    """Check the real files (count, shape, finite values) and the segments; returns the errors."""
     errors: list[str] = []
     files = dio.list_real_files()
     if len(files) != config.EXPECTED_REAL_FILES:
@@ -127,6 +130,7 @@ def verify_real() -> list[str]:
 
 
 def verify_synthetic() -> list[str]:
+    """Check every synthetic sample (shapes, finite values, GT markers vs metadata); returns errors."""
     errors: list[str] = []
     ids = dio.list_synthetic_ids()
     if len(ids) != config.EXPECTED_SYNTH_SAMPLES:
