@@ -7,10 +7,9 @@ import numpy as np
 import pytest
 
 from das.config import EnhancementParams
-from das.enhancement import (angle_to_velocity, bank_angles, directional_filter_bank, enhance,
-                             fk_fan_mask, fk_velocity_filter, gabor_kernels, line_snr,
-                             oriented_line_kernels, ridge_filter, robust_z,
-                             subtract_background, tukey_window, velocity_to_angle)
+from das.enhancement import (bank_angles, directional_filter_bank, enhance, fk_fan_mask,
+                             fk_velocity_filter, line_snr, oriented_line_kernels, ridge_filter,
+                             robust_z, velocity_to_angle)
 
 DT, DX = 0.04, 5.1065
 T, X = 1500, 52
@@ -22,37 +21,32 @@ def _line(v: float, x0: float = 130.0, width: float = 6.0) -> np.ndarray:
     return np.exp(-0.5 * ((x - v * t - x0) / width) ** 2)
 
 
-def _residual_energy(a: np.ndarray, pad_mode: str = "zero") -> float:
-    out = fk_velocity_filter(a, DT, DX, 10 / 3.6, 150 / 3.6, direction=0, pad_mode=pad_mode)
+def _residual_energy(a: np.ndarray) -> float:
+    out = fk_velocity_filter(a, DT, DX, 10 / 3.6, 150 / 3.6, direction=0)
     return float((out ** 2).sum() / ((a - a.mean()) ** 2).sum())
 
 
 # ---------------------------------------------------------------- f-k filter
-@pytest.mark.parametrize("pad_mode", ["zero", "reflect", "tukey", "none"])
-def test_fan_filter_keeps_moving_line_removes_stripes(pad_mode):
+def test_fan_filter_keeps_moving_line_removes_static_stripe():
     line = _line(-14.0, x0=400.0)               # 50 km/h towards decreasing position
     vertical = np.zeros((T, X))
     vertical[:, 20] = 3.0                       # static channel stripe (v = 0)
-    assert _residual_energy(line, pad_mode) > 0.6
-    assert _residual_energy(vertical, pad_mode) < 1e-6
+    assert _residual_energy(line) > 0.6
+    assert _residual_energy(vertical) < 1e-6
 
 
-def test_reflect_padding_removes_edge_leakage_of_horizontal_stripes():
+def test_fan_filter_suppresses_simultaneous_event():
     horizontal = np.zeros((T, X))
-    horizontal[700:705, :] = 3.0                # simultaneous event over the whole cable
-    assert _residual_energy(horizontal, "zero") > 0.005       # zero padding leaks at the edges
-    assert _residual_energy(horizontal, "reflect") < 1e-6     # mirrored: no edges at all
-    with pytest.raises(ValueError):
-        fk_velocity_filter(horizontal, DT, DX, 1, 2, pad_mode="bogus")
+    horizontal[700:705, :] = 3.0                # the same event on the whole cable (v = inf)
+    assert _residual_energy(horizontal) < 0.05
 
 
-@pytest.mark.parametrize("pad_mode", ["zero", "reflect"])
-def test_fan_filter_direction_selectivity(pad_mode):
+def test_fan_filter_direction_selectivity():
     pos, neg = _line(+14.0, x0=-130.0), _line(-14.0, x0=400.0)   # both fully inside
     img = pos + neg
     c = lambda a, b: np.corrcoef(a.ravel(), (b - b.mean()).ravel())[0, 1]  # noqa: E731
-    keep_pos = fk_velocity_filter(img, DT, DX, 10 / 3.6, 150 / 3.6, +1, pad_mode=pad_mode)
-    keep_neg = fk_velocity_filter(img, DT, DX, 10 / 3.6, 150 / 3.6, -1, pad_mode=pad_mode)
+    keep_pos = fk_velocity_filter(img, DT, DX, 10 / 3.6, 150 / 3.6, +1)
+    keep_neg = fk_velocity_filter(img, DT, DX, 10 / 3.6, 150 / 3.6, -1)
     assert c(keep_pos, pos) > 0.8 and c(keep_pos, neg) < 0.2
     assert c(keep_neg, neg) > 0.8 and c(keep_neg, pos) < 0.2
 
@@ -67,17 +61,10 @@ def test_fan_mask_values():
     assert m_pos[1, 2] == 1 and m_pos[2, 2] == 0           # v = -f/k: (1, -0.1) -> +10
 
 
-def test_tukey_window():
-    w = tukey_window(52, 0.2)
-    assert w[0] == pytest.approx(0) and w[26] == 1 and np.allclose(w, w[::-1])
-
-
 # ---------------------------------------------------------------- image enhancement
-def test_velocity_angle_round_trip():
+def test_velocity_angle_and_bank():
     v = np.array([-30.0, -2.8, 2.8, 41.7])
-    a = velocity_to_angle(v, 0.04, 0.64)
-    np.testing.assert_allclose(angle_to_velocity(a, 0.04, 0.64), v)
-    assert (np.sign(a) == np.sign(v)).all()
+    assert (np.sign(velocity_to_angle(v, 0.04, 0.64)) == np.sign(v)).all()
     angs = bank_angles(10 / 3.6, 150 / 3.6, -1, 24, 0.04, 0.64)
     assert len(angs) == 24 and (angs < 0).all()
 
@@ -90,39 +77,27 @@ def _slanted_image(angle: float, shape=(200, 200), width: float = 1.5) -> np.nda
     return np.exp(-0.5 * (perp / width) ** 2)
 
 
-@pytest.mark.parametrize("kind", ["line", "gabor"])
-def test_filter_bank_finds_line_orientation(kind):
+def test_line_kernels_zero_mean_unit_norm_and_best_angle():
     angles = np.deg2rad(np.linspace(-60, 60, 13))
-    true = 4                                                     # -20 deg
-    img = _slanted_image(angles[true])
-    kernels = (oriented_line_kernels(41, angles, 1.5) if kind == "line"
-               else gabor_kernels(angles, wavelength=8.0, sigma=4.0))
+    kernels = oriented_line_kernels(41, angles, 1.5)
     for k in kernels:
         assert abs(float(k.mean())) < 1e-6 and np.linalg.norm(k) == pytest.approx(1, rel=1e-5)
-    resp, idx = directional_filter_bank(img, kernels)
-    assert idx[100, 100] == true and resp[100, 100] > 0
+    img = _slanted_image(angles[4])                              # -20 deg
+    best = [directional_filter_bank(img, [k])[100, 100] for k in kernels]
+    assert int(np.argmax(best)) == 4
 
 
 def test_filter_bank_raises_snr_of_weak_line():
     rng = np.random.default_rng(0)
     angle = np.deg2rad(30)
     img = 0.7 * _slanted_image(angle, (300, 300)) + rng.standard_normal((300, 300))
-    resp, _ = directional_filter_bank(img, oriented_line_kernels(41, np.array([angle]), 1.5))
+    resp = directional_filter_bank(img, oriented_line_kernels(41, np.array([angle]), 1.5))
     on = _slanted_image(angle, (300, 300)) > 0.9
-    z_in, z_out = robust_z(img), robust_z(resp)
-    assert z_out[on].mean() > 2.5 * z_in[on].mean()
-
-
-def test_subtract_background_keeps_narrow_lines():
-    img = np.tile(np.linspace(0, 5, 300), (100, 1))      # slow ramp along space
-    img[:, 150:154] += 3.0                                # narrow bright line
-    out = subtract_background(img, 51)
-    assert out[:, 152].mean() == pytest.approx(3.0, abs=0.2)
-    assert np.abs(out[:, :100]).max() < 0.2
+    assert robust_z(resp)[on].mean() > 2.5 * robust_z(img)[on].mean()
 
 
 def test_ridge_filter_runs():
-    out = ridge_filter(_slanted_image(0.3, (80, 80)), (1.0, 2.0), "sato")
+    out = ridge_filter(_slanted_image(0.3, (80, 80)), (1.0, 2.0))
     assert out.shape == (80, 80) and out[40, 40] > np.median(out)
 
 
@@ -137,7 +112,7 @@ def test_line_snr():
     assert p99 > 5 and frac > 0.015
 
 
-@pytest.mark.parametrize("enhancer", ["filterbank", "gabor", "sato", "none"])
+@pytest.mark.parametrize("enhancer", ["filterbank", "sato", "none"])
 def test_enhance_outputs(enhancer):
     rng = np.random.default_rng(1)
     img = _line(-14.0, x0=400.0) + 0.2 * rng.standard_normal((T, X))
@@ -148,6 +123,7 @@ def test_enhance_outputs(enhancer):
         assert out.response[d].shape == (T, X * ep.space_upsample)
     # the line moves towards -x, so the negative-direction map must respond more strongly
     assert out.response[-1].max() > out.response[1].max()
-    if enhancer in ("filterbank", "gabor"):
-        assert len(out.velocities[-1]) == 6 and (out.velocities[-1] < 0).all()
-    assert {"input", "fk_both", "fk_removed", "fk_pos", "fk_neg"} <= set(out.stages)
+    assert {"input", "fk_both", "fk_removed", "fk_pos", "fk_neg", "response_pos"} <= set(out.stages)
+    assert out.combined.shape == out.response[1].shape
+    with pytest.raises(ValueError):
+        enhance(img, replace(ep, enhancer="bogus"), DT, DX)

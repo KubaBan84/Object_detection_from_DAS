@@ -1,19 +1,18 @@
-"""Frequency analysis of the real DAS recordings and the choice of the pass bands.
+"""Stage 3: frequency analysis of the real DAS recordings and the choice of the pass band.
 
 1. Global Welch PSD over all 259 files (per channel), detection of tonal lines
    (on the channel median and on every channel separately).
 2. Band selection: for a grid of bands [f_low, f_high) the signal of every analysed
    segment is common-mode filtered, band-passed and converted to the log energy envelope
-   image; the fraction of its f-k energy inside the vehicle velocity fan (10-150 km/h,
-   both directions) is the label-free criterion. The best low-frequency (LF, quasi-static
-   load -> thin lines) and high-frequency (HF, vibrations -> thick lines) bands are chosen.
-   The vehicle-vs-background spectral contrast (and the rejected d' criterion) is plotted.
+   image, which is then f-k fan filtered (10-150 km/h, both directions). The label-free
+   criterion is the *line SNR* (p99 of the robust z-score of the result); the band with
+   the highest line SNR is used by the pipeline. The best low-frequency band (f_high <=
+   10 Hz, quasi-static load of the vehicles) is shown for comparison. The
+   vehicle-vs-background spectral contrast (and the rejected d' criterion) is plotted.
 3. Per segment: per-channel FFT, STFT of selected channels, band-limited envelopes,
-   f-k spectra of the raw signal and of the LF / HF envelopes with the velocity fan.
+   f-k spectra of the raw signal and of the low-frequency / chosen-band envelopes.
 
 Outputs: ``outputs/results/spectral_summary.json`` and figures in ``outputs/figures/spectral/``.
-
-Plan: Stage 3.
 """
 from __future__ import annotations
 
@@ -31,7 +30,9 @@ import numpy as np  # noqa: E402
 from das import config  # noqa: E402
 from das import io as dio  # noqa: E402
 from das import spectral, stats  # noqa: E402
+from das.config import PreprocessingParams  # noqa: E402
 from das.enhancement import fk_velocity_filter, line_snr  # noqa: E402
+from das.pipeline import to_jsonable  # noqa: E402
 from das.preprocessing import bandpass_fft, bandpass_response, remove_common_mode  # noqa: E402
 from das.visualization import plot_waterfall, save_figure  # noqa: E402
 
@@ -47,8 +48,7 @@ D_LOWS = np.array([0.5, 1, 2, 3, 5, 8, 10, 15, 20, 30, 40, 60])
 D_HIGHS = np.array([5, 10, 15, 20, 30, 40, 50, 60, 80, 100, 150, 200, 250, 312])
 FAN_LOWS = np.array([0.2, 0.3, 0.5, 1, 2, 3, 5, 8, 10, 15, 20, 30, 40, 50, 60, 80])
 FAN_HIGHS = np.array([1, 2, 3, 5, 8, 10, 15, 20, 30, 40, 50, 60, 80, 100, 120, 150, 200, 250, NYQ])
-LF_MAX_HIGH = 10.0                 # LF bands: f_high <= 10 Hz
-HF_MIN_LOW = 10.0                  # HF bands: f_low >= 10 Hz
+LF_MAX_HIGH = 10.0                 # low-frequency comparison band: f_high <= 10 Hz
 V_FAN_KMH = (10.0, 150.0)
 V_LINES_KMH = (20, 50, 100)
 EPS = 1e-30
@@ -63,20 +63,6 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--dpi", type=int, default=110)
     p.add_argument("--recompute", action="store_true", help="ignore the cached band grid")
     return p.parse_args()
-
-
-def to_jsonable(obj):
-    if isinstance(obj, dict):
-        return {str(k): to_jsonable(v) for k, v in obj.items()}
-    if isinstance(obj, (list, tuple)):
-        return [to_jsonable(v) for v in obj]
-    if isinstance(obj, np.ndarray):
-        return to_jsonable(obj.tolist())
-    if isinstance(obj, (float, np.floating)):
-        return float(obj) if np.isfinite(obj) else None
-    if isinstance(obj, np.generic):
-        return obj.item()
-    return obj
 
 
 def band_label(band: tuple[float, float]) -> str:
@@ -186,15 +172,15 @@ def fan_grid(specs: list[dict]) -> np.ndarray:
 
 
 def choose_bands(score: np.ndarray) -> tuple[tuple[float, float], tuple[float, float]]:
-    """Best LF band (f_high <= LF_MAX_HIGH) and HF band (f_low >= HF_MIN_LOW) by ``score``."""
-    lf = np.where(FAN_HIGHS[None, :] <= LF_MAX_HIGH, score, np.nan)
-    hf = np.where(FAN_LOWS[:, None] >= HF_MIN_LOW, score, np.nan)
-    i, j = np.unravel_index(np.nanargmax(lf), lf.shape)
-    a, b = np.unravel_index(np.nanargmax(hf), hf.shape)
+    """(chosen band = highest ``score`` over the whole grid, best low-frequency band with
+    f_high <= LF_MAX_HIGH, shown for comparison)."""
+    best_lf = np.where(FAN_HIGHS[None, :] <= LF_MAX_HIGH, score, np.nan)
+    i, j = np.unravel_index(np.nanargmax(score), score.shape)
+    a, b = np.unravel_index(np.nanargmax(best_lf), best_lf.shape)
     return (float(FAN_LOWS[i]), float(FAN_HIGHS[j])), (float(FAN_LOWS[a]), float(FAN_HIGHS[b]))
 
 
-def plot_band_grids(snr: np.ndarray, fan_total: np.ndarray, lf, hf, dpi) -> None:
+def plot_band_grids(snr: np.ndarray, fan_total: np.ndarray, chosen, best_lf, dpi) -> None:
     """Line SNR and fan energy fraction over the grid of candidate bands."""
     fig, axes = plt.subplots(1, 2, figsize=(19, 6.5), layout="constrained")
     for ax, grid, title, label in (
@@ -206,23 +192,23 @@ def plot_band_grids(snr: np.ndarray, fan_total: np.ndarray, lf, hf, dpi) -> None
         im = ax.imshow(grid, origin="lower", cmap="viridis", aspect="auto")
         ax.set_xticks(range(len(FAN_HIGHS)), [f"{v:g}" for v in FAN_HIGHS], rotation=60)
         ax.set_yticks(range(len(FAN_LOWS)), [f"{v:g}" for v in FAN_LOWS])
-        for band, name, colour in ((lf, "LF", "red"), (hf, "HF", "white")):
+        for band, name, colour in ((chosen, "chosen", "white"), (best_lf, "best LF (not used)", "red")):
             i, j = list(FAN_LOWS).index(band[0]), list(FAN_HIGHS).index(band[1])
             ax.plot(j, i, "*", color=colour, ms=16, mec="black")
             ax.text(j, i + 0.45, f"{name} {band_label(band)}", color=colour, ha="center",
                     fontsize=9, fontweight="bold")
         ax.axvline(list(FAN_HIGHS).index(LF_MAX_HIGH) + 0.5, color="red", ls=":", lw=1)
-        ax.axhline(list(FAN_LOWS).index(HF_MIN_LOW) - 0.5, color="white", ls=":", lw=1)
         ax.set_xlabel("f_high [Hz]")
         ax.set_ylabel("f_low [Hz]")
         ax.set_title(title, fontsize=10)
         fig.colorbar(im, ax=ax, label=label)
     fig.suptitle(f"Band selection, mean of the 3 segments (common-mode removed, fan "
-                 f"{V_FAN_KMH[0]:g}-{V_FAN_KMH[1]:g} km/h); stars = chosen LF / HF bands")
+                 f"{V_FAN_KMH[0]:g}-{V_FAN_KMH[1]:g} km/h); white star = chosen band, red = best "
+                 f"band with f_high <= {LF_MAX_HIGH:g} Hz")
     save_figure(fig, FIG_DIR / "band_selection.png", dpi)
 
 
-def contrast_analysis(specs: list[dict], lf, hf, dpi: int) -> dict:
+def contrast_analysis(specs: list[dict], chosen, best_lf, dpi: int) -> dict:
     """Vehicle vs background cell spectra; d' grid (biased - documented, not used)."""
     powers, vehs, bgs = [], [], []
     freqs = None
@@ -249,8 +235,8 @@ def contrast_analysis(specs: list[dict], lf, hf, dpi: int) -> dict:
     axes[0].set_title("Spectra of vehicle vs background cells (3 segments)")
     axes[1].semilogx(freqs[1:], ratio_db[1:], lw=0.5, alpha=0.5)
     axes[1].semilogx(freqs[1:], sm[1:], lw=1.5)
-    axes[1].axvspan(*lf, color="red", alpha=0.15, label=f"LF {band_label(lf)}")
-    axes[1].axvspan(*hf, color="green", alpha=0.15, label=f"HF {band_label(hf)}")
+    axes[1].axvspan(*chosen, color="green", alpha=0.15, label=f"chosen {band_label(chosen)}")
+    axes[1].axvspan(*best_lf, color="red", alpha=0.15, label=f"best LF {band_label(best_lf)} (not used)")
     axes[1].set_xlabel("frequency [Hz]")
     axes[1].set_ylabel("vehicle / background [dB]")
     axes[1].legend(fontsize=8)
@@ -299,7 +285,7 @@ def plot_fk(ax, f, k, s, fmax, name):
     return im
 
 
-def analyse_segment(spec: dict, lf, hf, channels: list[int], dpi: int) -> dict:
+def analyse_segment(spec: dict, chosen, best_lf, channels: list[int], dpi: int) -> dict:
     """FFT per channel, STFT and f-k analysis of one segment."""
     seg = dio.load_named_segment(spec["name"], pad_files=1)
     x = seg.core
@@ -350,9 +336,9 @@ def analyse_segment(spec: dict, lf, hf, channels: list[int], dpi: int) -> dict:
     save_figure(fig, out_dir / "stft.png", dpi)
 
     # Band-limited envelopes --------------------------------------------------------------
-    bands = [(0.0, NYQ)] + COMPARE_BANDS + [lf, hf]
+    bands = [(0.0, NYQ)] + COMPARE_BANDS + [best_lf, chosen]
     names = ["broadband"] + [band_label(b) for b in COMPARE_BANDS] + \
-            [f"LF {band_label(lf)}", f"HF {band_label(hf)}"]
+            [f"best LF {band_label(best_lf)}", f"chosen {band_label(chosen)}"]
     fig, axes = plt.subplots(1, len(bands), figsize=(2.9 * len(bands), 8), layout="constrained",
                              sharey=True)
     for ax, band, name in zip(axes, bands, names):
@@ -373,7 +359,7 @@ def analyse_segment(spec: dict, lf, hf, channels: list[int], dpi: int) -> dict:
     fig, axes = plt.subplots(1, 3, figsize=(18, 6), layout="constrained")
     im = plot_fk(axes[0], f_r, k_r, s_r, 8.0, "raw strain rate (0-8 Hz)")
     fig.colorbar(im, ax=axes[0], fraction=0.04, label="dB")
-    for ax, band, name in ((axes[1], lf, "LF"), (axes[2], hf, "HF")):
+    for ax, band, name in ((axes[1], best_lf, "best LF"), (axes[2], chosen, "chosen")):
         f_e, k_e, s_e = spectral.fk_spectrum(band_envelope(seg, xcm, band), ROW_DT, seg.dx,
                                              pad_x=128)
         frac, rest = spectral.fk_velocity_energy(f_e, k_e, s_e, v_edges)
@@ -431,13 +417,17 @@ def main() -> None:
     mean = fan.mean(axis=0)                    # NaN (invalid band) stays NaN
     fan_total = mean[..., 0] + mean[..., 1]
     snr, frac4 = mean[..., 2], mean[..., 3]
-    lf, hf = choose_bands(snr)
-    plot_band_grids(snr, fan_total, lf, hf, args.dpi)
+    chosen, best_lf = choose_bands(snr)
+    plot_band_grids(snr, fan_total, chosen, best_lf, args.dpi)
+    pp = PreprocessingParams()
+    used = (pp.band_low, pp.band_high)
+    print(f"  chosen band {band_label(chosen)}; band used by the pipeline (config): {band_label(used)}"
+          + ("" if np.allclose(used, chosen) else "  <-- DIFFERENT, update config.PreprocessingParams"))
 
     def at(grid, b):
         return float(grid[list(FAN_LOWS).index(b[0]), list(FAN_HIGHS).index(b[1])])
     bb = (0.2, NYQ)
-    for name, b in (("LF", lf), ("HF", hf), ("broadband", bb)):
+    for name, b in (("chosen", chosen), ("best LF", best_lf), ("broadband", bb)):
         print(f"  {name:<9} {band_label(b):<14} line SNR {at(snr, b):.2f}  "
               f">4 sigma {at(frac4, b):.4f}  fan fraction {at(fan_total, b):.3f}")
     order = np.argsort(-np.nan_to_num(snr, nan=-1).ravel())[:10]
@@ -446,7 +436,7 @@ def main() -> None:
     print("  top-10 bands by line SNR:", ", ".join(f"{a:g}-{b:g} ({v:.2f})" for a, b, v in top))
 
     print("[3/4] vehicle vs background spectral contrast")
-    contrast = contrast_analysis(config.SEGMENTS, lf, hf, args.dpi)
+    contrast = contrast_analysis(config.SEGMENTS, chosen, best_lf, args.dpi)
     print("  contrast [dB]:", ", ".join(f"{k}: {v:.1f}" for k, v in contrast["ratio_db_at"].items()))
 
     n_ch = psd.shape[1]
@@ -454,7 +444,7 @@ def main() -> None:
     print(f"[4/4] per-segment analysis {[s['name'] for s in specs]}, STFT channels {channels}")
     segs = []
     for spec in specs:
-        r = analyse_segment(spec, lf, hf, channels, args.dpi)
+        r = analyse_segment(spec, chosen, best_lf, channels, args.dpi)
         segs.append(r)
         for name, frac in r["fk_energy_fraction_envelope"].items():
             print(f"  {spec['name']:<12} {name} envelope f-k energy: " +
@@ -465,10 +455,10 @@ def main() -> None:
                    "band_power_fraction": dict(zip([band_label(b) for b in PLAN_BANDS], frac_global))},
         "band_selection": {
             "criterion": "line SNR = p99 of robust z of the f-k fan-filtered log envelope image",
-            "v_fan_kmh": V_FAN_KMH, "lf_band_hz": lf, "hf_band_hz": hf,
+            "v_fan_kmh": V_FAN_KMH, "chosen_band_hz": chosen, "best_lf_band_hz": best_lf,
             "scores": {name: {"line_snr": at(snr, b), "frac_gt_4sigma": at(frac4, b),
                               "fan_fraction": at(fan_total, b)}
-                       for name, b in (("LF", lf), ("HF", hf), ("broadband", bb))},
+                       for name, b in (("chosen", chosen), ("best_lf", best_lf), ("broadband", bb))},
             "top10_line_snr": top,
             "grid": {"f_lows": FAN_LOWS, "f_highs": FAN_HIGHS, "line_snr_mean": snr,
                      "frac_gt_4sigma_mean": frac4, "fan_fraction_mean": fan_total,

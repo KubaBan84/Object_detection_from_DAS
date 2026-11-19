@@ -1,14 +1,15 @@
 """Enhancement of slanted lines and suppression of everything else (plan: Stage 5).
 
-For every band image (Stage 4) and every direction of travel (+1 / -1)::
+For each direction of travel (+1 = towards increasing cable position, -1 = decreasing)::
 
-    image --f-k fan filter (10-150 km/h, one direction)--> upsample x8 along space
-          --[optional white top-hat]--> directional matched-filter bank --> robust z-score
+    image --f-k fan filter (5-150 km/h, one direction)--> upsample x8 along space
+          --directional matched-filter bank--> robust z-score = response map
 
 The f-k filter removes everything that does not move like a vehicle: horizontal stripes
-(simultaneous events, v -> inf), vertical stripes (static channel noise, v -> 0) and
-fast seismic waves. The filter bank integrates the energy along short line segments of
-all admissible slopes, which raises the SNR of thin car lines (matched filter).
+(simultaneous events, v -> inf), vertical stripes (static channel noise, v -> 0), fast
+seismic waves, and the traffic of the other direction. The filter bank integrates the
+energy along short line segments of all admissible slopes (a matched filter), which
+raises the line-to-noise ratio and closes small gaps in the lines.
 """
 from __future__ import annotations
 
@@ -32,27 +33,14 @@ def _raised_cosine_step(v: np.ndarray, edge: float, width: float) -> np.ndarray:
     return 0.5 - 0.5 * np.cos(np.pi * t)
 
 
-def tukey_window(n: int, alpha: float = 0.2) -> np.ndarray:
-    """Tukey (tapered cosine) window of length n."""
-    if alpha <= 0:
-        return np.ones(n)
-    x = np.linspace(0.0, 1.0, n)
-    w = np.ones(n)
-    edge = alpha / 2
-    lo, hi = x < edge, x > 1 - edge
-    w[lo] = 0.5 * (1 + np.cos(np.pi * (x[lo] / edge - 1)))
-    w[hi] = 0.5 * (1 + np.cos(np.pi * ((x[hi] - 1) / edge + 1)))
-    return w
-
-
 def fk_fan_mask(f: np.ndarray, k: np.ndarray, v_min: float, v_max: float, direction: int,
                 taper: float = 0.2) -> np.ndarray:
     """Tapered f-k velocity-fan mask on the (unshifted) numpy FFT grid.
 
     The apparent velocity of an (f, k) cell is v = -f / k (numpy FFT sign convention, see
-    ``spectral``). Cells with v_min <= |v| <= v_max pass; transitions are raised-cosine
-    over ``taper * edge``. ``direction`` +1 keeps v > 0 (towards increasing position),
-    -1 keeps v < 0, 0 keeps both. k = 0 (simultaneous events, |v| = inf) and DC are rejected.
+    ``spectral``). Cells with v_min <= |v| <= v_max pass; the edges are raised-cosine over
+    ``taper * edge``. ``direction`` +1 keeps v > 0, -1 keeps v < 0, 0 keeps both.
+    k = 0 (simultaneous events, |v| = inf) and DC are rejected.
     """
     ff, kk = f[:, None], k[None, :]
     with np.errstate(divide="ignore", invalid="ignore"):
@@ -69,35 +57,18 @@ def fk_fan_mask(f: np.ndarray, k: np.ndarray, v_min: float, v_max: float, direct
 
 
 def fk_velocity_filter(img: np.ndarray, dt: float, dx: float, v_min: float, v_max: float,
-                       direction: int = 0, taper: float = 0.2, pad_x: int = 128,
-                       pad_mode: str = "zero") -> np.ndarray:
-    """Keep only energy moving with apparent velocity v_min <= |v| <= v_max [m/s].
+                       direction: int = 0, taper: float = 0.2, pad_x: int = 128) -> np.ndarray:
+    """Keep only the energy moving with apparent velocity v_min <= |v| <= v_max [m/s].
 
-    ``direction``: +1 increasing cable position, -1 decreasing, 0 both.
-    ``pad_mode`` controls the spatial boundary (the FFT is circular in space):
-
-    - ``zero``: zero-pad to ``pad_x`` columns;
-    - ``reflect``: mirror the image (2 C columns) - a stripe spanning the whole cable then
-      has no edges at all, so it does not leak into the fan; the mirrored copy of a line
-      has the opposite velocity and is removed by the direction mask / cropped away;
-    - ``tukey``: Tukey taper (alpha 0.2) along space, then zero padding;
-    - ``none``: no padding - the FFT wraps the cable ends around (ablation, Stage 13).
-
-    The image mean is removed first. Returns an array of img.shape.
+    2-D FFT of the image (time x space) -> multiply by the fan mask -> inverse FFT.
+    ``direction``: +1 increasing cable position, -1 decreasing, 0 both. The image mean is
+    removed first and the space axis is zero-padded to ``pad_x`` columns, so the cable
+    ends do not wrap around in the circular FFT. Returns an array of ``img.shape``.
     """
     v = np.asarray(img, dtype=np.float64)
     v = v - v.mean()
     n = v.shape[1]
-    if pad_mode == "none":
-        nx = n
-    elif pad_mode == "reflect":
-        v, nx = np.concatenate([v, v[:, ::-1]], axis=1), 2 * n
-    elif pad_mode == "tukey":
-        v, nx = v * tukey_window(n)[None, :], max(pad_x, n)
-    elif pad_mode == "zero":
-        nx = max(pad_x, n)
-    else:
-        raise ValueError(f"Unknown pad_mode {pad_mode!r}")
+    nx = max(pad_x, n)
     spec = np.fft.fft2(v, s=(v.shape[0], nx))
     mask = fk_fan_mask(np.fft.fftfreq(v.shape[0], dt), np.fft.fftfreq(nx, dx),
                        v_min, v_max, direction, taper)
@@ -127,11 +98,6 @@ def velocity_to_angle(v_ms: float | np.ndarray, row_dt: float, col_dx: float):
     increasing position) gives a positive angle (columns increase downwards).
     """
     return np.arctan(np.asarray(v_ms) * row_dt / col_dx)
-
-
-def angle_to_velocity(angle: float | np.ndarray, row_dt: float, col_dx: float):
-    """Inverse of :func:`velocity_to_angle` -> [m/s]."""
-    return np.tan(np.asarray(angle)) * col_dx / row_dt
 
 
 def bank_angles(v_min: float, v_max: float, direction: int, n_angles: int, row_dt: float,
@@ -167,56 +133,21 @@ def oriented_line_kernels(length: int, angles: np.ndarray, width_sigma: float = 
     return kernels
 
 
-def gabor_kernels(angles: np.ndarray, wavelength: float, sigma: float, gamma: float = 0.3
-                  ) -> list[np.ndarray]:
-    """Even (cosine) Gabor kernels whose stripes run along the given line angles.
-
-    In ``cv2.getGaborKernel`` the stripes run along (-sin theta, cos theta) in (x=col,
-    y=row) coordinates, so a line at angle ``a`` from the vertical needs theta = -a.
-    ``gamma`` < 1 elongates the envelope along the stripes. Zero-mean, unit norm.
-    """
-    size = int(2 * np.ceil(3 * sigma / gamma) + 1)
-    out = []
-    for a in np.atleast_1d(angles):
-        k = cv2.getGaborKernel((size, size), sigma, -float(a), wavelength, gamma, 0.0,
-                               ktype=cv2.CV_64F)
-        k -= k.mean()
-        out.append((k / np.linalg.norm(k)).astype(np.float32))
-    return out
-
-
-def directional_filter_bank(img: np.ndarray, kernels: list[np.ndarray]
-                            ) -> tuple[np.ndarray, np.ndarray]:
-    """Correlate with every kernel (cv2.filter2D) -> (max response, argmax kernel index)."""
+def directional_filter_bank(img: np.ndarray, kernels: list[np.ndarray]) -> np.ndarray:
+    """Correlate with every kernel (cv2.filter2D) and keep the maximum response per pixel."""
     src = np.asarray(img, dtype=np.float32)
     best = np.full(src.shape, -np.inf, dtype=np.float32)
-    idx = np.zeros(src.shape, dtype=np.int16)
-    for i, k in enumerate(kernels):
-        r = cv2.filter2D(src, cv2.CV_32F, k, borderType=cv2.BORDER_REFLECT)
-        better = r > best
-        best[better] = r[better]
-        idx[better] = i
-    return best.astype(np.float64), idx
+    for k in kernels:
+        np.maximum(best, cv2.filter2D(src, cv2.CV_32F, k, borderType=cv2.BORDER_REFLECT),
+                   out=best)
+    return best.astype(np.float64)
 
 
-def subtract_background(img: np.ndarray, kernel_px: int) -> np.ndarray:
-    """White top-hat with a horizontal line element of ``kernel_px`` columns.
+def ridge_filter(img: np.ndarray, sigmas: tuple[float, ...] = (1.0, 2.0, 3.0)) -> np.ndarray:
+    """Alternative enhancer (method comparison): Hessian-based Sato ridge filter (skimage)."""
+    from skimage.filters import sato
 
-    The grey opening along space keeps only structures wider than the element (slowly
-    varying background along the cable); subtracting it keeps the narrower slanted lines.
-    """
-    se = np.ones((1, int(kernel_px)), dtype=np.uint8)
-    return cv2.morphologyEx(np.asarray(img, dtype=np.float32), cv2.MORPH_TOPHAT, se
-                            ).astype(np.float64)
-
-
-def ridge_filter(img: np.ndarray, sigmas: tuple[float, ...] = (1.0, 2.0, 3.0),
-                 method: str = "sato") -> np.ndarray:
-    """Alternative enhancer: Hessian-based ridge filters from scikit-image (bright ridges)."""
-    from skimage.filters import meijering, sato
-
-    fn = {"sato": sato, "meijering": meijering}[method]
-    return fn(np.asarray(img, dtype=np.float64), sigmas=sigmas, black_ridges=False)
+    return sato(np.asarray(img, dtype=np.float64), sigmas=sigmas, black_ridges=False)
 
 
 # ======================================================================================
@@ -224,36 +155,35 @@ def ridge_filter(img: np.ndarray, sigmas: tuple[float, ...] = (1.0, 2.0, 3.0),
 # ======================================================================================
 @dataclass
 class Enhanced:
-    """Result of :func:`enhance` for one band image."""
+    """Result of :func:`enhance`.
+
+    ``response[d]``: robust-z map of direction d (+1 / -1) on the upsampled grid.
+    ``stages``: ``input``, ``fk_both`` and ``fk_removed`` (what the fan filter removed,
+    both directions), and per direction n in {pos, neg}: ``fk_n`` (channel grid),
+    ``upsampled_n`` and ``response_n``.
+    """
     row_dt: float                                    # [s] per row
     col_dx: float                                    # [m] per column (after upsampling)
-    response: dict[int, np.ndarray] = field(default_factory=dict)       # direction -> z map
-    angle_index: dict[int, np.ndarray] = field(default_factory=dict)    # filter bank only
-    velocities: dict[int, np.ndarray] = field(default_factory=dict)     # m/s per index
+    response: dict[int, np.ndarray] = field(default_factory=dict)
     stages: dict[str, np.ndarray] = field(default_factory=dict)
 
     @property
     def combined(self) -> np.ndarray:
-        """Maximum over directions (for display / direction-agnostic measures)."""
-        return np.maximum.reduce(list(self.response.values()))
+        """Maximum over both directions (for display)."""
+        return np.maximum(self.response[1], self.response[-1])
 
 
 def enhance(img: np.ndarray, params: EnhancementParams, row_dt: float, col_dx: float
             ) -> Enhanced:
-    """Stage-5 chain for one band image (rows = time, columns = channels).
-
-    Stages: ``input``, ``fk_both`` and ``fk_removed`` (what the fan filter removed, both
-    directions), and per direction d in {pos, neg}: ``fk_d``, ``upsampled_d``,
-    ``background_d`` (if enabled) and ``response_d`` (robust z-score).
-    """
+    """Stage-5 chain for the Stage-4 image (rows = time, columns = channels)."""
     v_min, v_max = params.v_min_kmh / 3.6, params.v_max_kmh / 3.6
     up = params.space_upsample
     out = Enhanced(row_dt=row_dt, col_dx=col_dx / up)
+
     def fk(d: int) -> np.ndarray:
         if not params.fk_filter:          # ablation: no velocity filtering at all
             return np.asarray(img, dtype=np.float64) - np.mean(img)
-        return fk_velocity_filter(img, row_dt, col_dx, v_min, v_max, d, params.fk_taper,
-                                  pad_mode=params.fk_pad_mode)
+        return fk_velocity_filter(img, row_dt, col_dx, v_min, v_max, d, params.fk_taper)
 
     both = fk(0)
     out.stages.update(input=np.asarray(img, dtype=np.float64), fk_both=both,
@@ -263,22 +193,12 @@ def enhance(img: np.ndarray, params: EnhancementParams, row_dt: float, col_dx: f
         u = upsample_space(f, up)
         out.stages[f"fk_{name}"] = f
         out.stages[f"upsampled_{name}"] = u
-        if params.background:
-            u = subtract_background(u, params.bg_kernel_px)
-            out.stages[f"background_{name}"] = u
-        angles = bank_angles(v_min, v_max, d, params.n_angles, row_dt, out.col_dx)
         if params.enhancer == "filterbank":
-            resp, idx = directional_filter_bank(
+            angles = bank_angles(v_min, v_max, d, params.n_angles, row_dt, out.col_dx)
+            resp = directional_filter_bank(
                 u, oriented_line_kernels(params.kernel_length_px, angles, params.kernel_width_sigma))
-            out.angle_index[d] = idx
-            out.velocities[d] = angle_to_velocity(angles, row_dt, out.col_dx)
-        elif params.enhancer == "gabor":
-            resp, idx = directional_filter_bank(
-                u, gabor_kernels(angles, params.gabor_wavelength_px, params.gabor_sigma_px))
-            out.angle_index[d] = idx
-            out.velocities[d] = angle_to_velocity(angles, row_dt, out.col_dx)
-        elif params.enhancer in ("sato", "meijering"):
-            resp = ridge_filter(u, params.ridge_sigmas, params.enhancer)
+        elif params.enhancer == "sato":
+            resp = ridge_filter(u, params.ridge_sigmas)
         elif params.enhancer == "none":
             resp = u
         else:

@@ -1,15 +1,17 @@
 """Grouping of line candidates into objects and averaging of each group (plan: Stage 7).
 
-Stage 6 returns many candidates per vehicle: fragments of a thin line, HoughLinesP and
-global-Hough versions of the same line, the strong-path line of a tram plus weak segments
-along its edges, and the same vehicle seen in the HF and the LF band. Here::
+Stage 6 can return several candidates for one vehicle: a tram line split into two
+components where its response drops, the bent end of a line near the cable ends, or the
+same tram seen as two touching lines. Here::
 
     pixel segments --physical units--> pairwise linking (velocity + time gap at the
-    midpoint) --> connected components (groups) --> weighted robust line fit per group
-    --> duplicate removal + plausibility filter --> DetectedObject list
+    midpoint, or continuation along the cable) --> connected components (groups)
+    --> weighted robust line fit per group --> duplicate removal + plausibility filter
+    --> DetectedObject list
 
 A line is described in physical space by its slowness p = dt/dx [s/m] and its passage
-time t(x) = t_c + p (x - x_c); velocity v = 1/p (signed, + towards increasing position).
+time t(x) = t_c + p (x - x_c); its velocity is v = 1/p (signed, + towards increasing
+cable position).
 
 Pixel -> physical convention (same as ``visualization.plot_waterfall`` extents): the
 centre of pixel (row r, col c) is at t = (r + 0.5) row_dt, x = (c + 0.5) col_dx.
@@ -29,7 +31,7 @@ from .detection import LineSegment
 # ======================================================================================
 @dataclass
 class DetectedObject:
-    """One vehicle: averaged line of a group of candidates, physical units.
+    """One vehicle: the averaged line of a group of candidates, in physical units.
 
     ``x_start_m`` / ``t_start_s`` is where the object enters the observed section (first in
     time), ``x_end_m`` / ``t_end_s`` where it leaves; ``t_ref_s`` is the passage time at
@@ -42,26 +44,13 @@ class DetectedObject:
     x_end_m: float
     t_start_s: float
     t_end_s: float
-    kind: str                         # "strong" | "weak"
-    score: float
-    segments: list[LineSegment] = field(default_factory=list)
-    track: np.ndarray | None = None   # (N, 2) [x_m, t_s] from tracking (Stage 9)
+    score: float                      # max mean response of the candidates [robust sigma]
     direction: int = 0
     x_ref_m: float = 0.0
-    bands: tuple[str, ...] = ()
-    sources: tuple[str, ...] = ()
-    thickness_s: float = float("nan")  # temporal width of the strong component
+    thickness_s: float = float("nan")  # mean temporal width of the line [s]
     support_m: float = 0.0            # length along the cable covered by candidates
-    fit_rms_s: float = 0.0            # RMS residual of the group fit [s]
-    # --- filled by Stages 8-9 (tracking.track_objects) -------------------------------------
-    v_track_kmh: float = float("nan")  # LSQ x(t) = v t + b on the track (reported velocity)
-    r2: float = float("nan")          # R^2 of that constant-velocity fit
-    accel_ms2: float = float("nan")   # quadratic x(t) fit, along the motion: + faster, - braking
-    v_start_kmh: float = float("nan")  # quadratic-fit velocity at the first / last track point
-    v_end_kmh: float = float("nan")
-    v_std_kmh: float = float("nan")   # std of the local velocity profile
-    speed_class: str = ""             # "constant" | "varying" | "" (no track)
-    profile: np.ndarray | None = None  # (M, 3) [t_s, x_m, v_kmh] local velocity profile
+    fit_rms_s: float = 0.0            # RMS residual of the group line fit [s]
+    segments: list[LineSegment] = field(default_factory=list)
 
     @property
     def slowness(self) -> float:
@@ -82,7 +71,7 @@ class DetectedObject:
 
 
 # ======================================================================================
-# Candidate parametrisation
+# Candidate parametrisation and linking
 # ======================================================================================
 def to_physical(pts: np.ndarray, row_dt: float, col_dx: float) -> tuple[np.ndarray, np.ndarray]:
     """(N, 2) [col, row] pixel points -> (x [m], t [s])."""
@@ -125,8 +114,8 @@ def link_matrix(segments: list[LineSegment], params: GroupingParams, row_dt: flo
       ``cont_max_ratio``. This joins the pieces of a bent trajectory (braking,
       accelerating, line ends bent by the filters at the cable ends).
 
-    The time tolerance is widened to half the thickness of a strong (thick) candidate, so
-    weak segments along the edges of a tram line join the tram.
+    The time tolerance is widened to half the thickness of the thicker candidate, so
+    pieces along the edges of a wide tram line join the tram.
     """
     a = _segment_arrays(segments, row_dt, col_dx)
     thick = np.maximum(a["thick"][:, None], a["thick"][None, :])
@@ -169,11 +158,7 @@ def connected_components(adj: np.ndarray) -> np.ndarray:
 
 def group_segments(segments: list[LineSegment], params: GroupingParams, row_dt: float,
                    col_dx: float) -> list[list[LineSegment]]:
-    """Single-linkage grouping of candidates (connected components of :func:`link_matrix`).
-
-    Merges double edges of a thick line, broken fragments of a thin line, HoughLinesP and
-    global-Hough versions of the same line and HF/LF detections of the same vehicle.
-    """
+    """Single-linkage grouping of candidates (connected components of :func:`link_matrix`)."""
     if not segments:
         return []
     lab = connected_components(link_matrix(segments, params, row_dt, col_dx))
@@ -226,20 +211,18 @@ def weighted_line_fit(x: np.ndarray, t: np.ndarray, w: np.ndarray, iterations: i
 
 
 def merge_group(group: list[LineSegment], obj_id: int, row_dt: float, col_dx: float,
-                x_ref_m: float = 0.0, band_weights: dict | None = None,
-                iterations: int = 2) -> DetectedObject:
+                x_ref_m: float = 0.0, iterations: int = 2) -> DetectedObject:
     """Average line of a group: robust weighted fit to points sampled along all segments.
 
-    Every segment contributes one point per pixel of length (so long segments weigh more)
-    with weight ``score * band_weight`` (e.g. LF counts more: its lines are thinner, so
-    its geometry is more precise). The object extent is the extent of the inlier points.
+    Every segment contributes one point per pixel of length (so long segments weigh
+    more), weighted by its score (stronger candidates weigh more). The object extent is
+    the extent of the inlier points; the velocity is 1 / slowness of the fitted line.
     """
-    bw = band_weights or {}
     pts, w = [], []
     for s in group:
         p = s.points()
         pts.append(p)
-        w.append(np.full(len(p), max(s.score, 1e-3) * bw.get(s.band, 1.0)))
+        w.append(np.full(len(p), max(s.score, 1e-3)))
     pts, w = np.concatenate(pts), np.concatenate(w)
     x, t = to_physical(pts, row_dt, col_dx)
     p, xc, tc, inl = weighted_line_fit(x, t, w, iterations, min_sigma=row_dt)
@@ -248,21 +231,15 @@ def merge_group(group: list[LineSegment], obj_id: int, row_dt: float, col_dx: fl
     p = p if p != 0 else 1e-9
     t_of = lambda xx: tc + p * (xx - xc)  # noqa: E731
     (xs, ts), (xe, te) = sorted([(xmin, t_of(xmin)), (xmax, t_of(xmax))], key=lambda q: q[1])
-    strong = [s for s in group if s.source == "strong"]
     res = t[inl] - t_of(x[inl])
     ga = _segment_arrays(group, row_dt, col_dx)
     return DetectedObject(
         obj_id=obj_id, velocity_kmh=3.6 / p, t_ref_s=float(t_of(x_ref_m)),
         x_start_m=xs, x_end_m=xe, t_start_s=float(ts), t_end_s=float(te),
-        kind="strong" if strong else "weak",
-        score=float(max(s.score for s in group)), segments=list(group),
-        direction=int(group[0].direction), x_ref_m=x_ref_m,
-        bands=tuple(sorted({s.band for s in group})),
-        sources=tuple(sorted({s.source for s in group})),
-        thickness_s=float(np.mean([s.thickness_px for s in strong]) * row_dt) if strong
-        else float("nan"),
+        score=float(max(s.score for s in group)), direction=int(group[0].direction),
+        x_ref_m=x_ref_m, thickness_s=float(np.nanmean([s.thickness_px for s in group]) * row_dt),
         support_m=interval_union_length(ga["x_lo"], ga["x_hi"]),
-        fit_rms_s=float(np.sqrt(np.mean(res ** 2))))
+        fit_rms_s=float(np.sqrt(np.mean(res ** 2))), segments=list(group))
 
 
 # ======================================================================================
@@ -285,14 +262,11 @@ def remove_duplicates(objects: list[DetectedObject], params: GroupingParams,
     Two objects of the same direction are duplicates when they overlap along the cable by
     at least ``dup_overlap`` of the shorter one and their lines stay within the time
     tolerance at both ends of the overlap (e.g. a fragment whose velocity was too
-    different to be linked in :func:`group_segments`). The strong one is kept; between
-    equal kinds the one with the larger support x score. Then objects are dropped when
-    they are shorter than ``min_channels`` channels, when |v| is outside [v_min, v_max],
-    or when they are weak, short (candidates cover less than ``weak_min_support_m`` of
-    cable) and faint (score below ``weak_short_min_score`` sigma) at the same time.
+    different to be linked in :func:`group_segments`); the one with the larger
+    support x score is kept. Then objects shorter than ``min_channels`` channels or
+    with |v| outside [v_min, v_max] are dropped.
     """
-    order = sorted(range(len(objects)), key=lambda i: (objects[i].kind != "strong",
-                                                       -objects[i].support_m * objects[i].score))
+    order = sorted(range(len(objects)), key=lambda i: -objects[i].support_m * objects[i].score)
     kept: list[DetectedObject] = []
     for i in order:
         o = objects[i]
@@ -308,11 +282,8 @@ def remove_duplicates(objects: list[DetectedObject], params: GroupingParams,
         if not dup:
             kept.append(o)
     min_ext = params.min_channels * channel_dx_m if channel_dx_m else 0.0
-    kept = [o for o in kept if (o.x_max - o.x_min) >= min_ext
-            and (o.kind == "strong" or o.support_m >= params.weak_min_support_m
-                 or o.score >= params.weak_short_min_score)
+    return [o for o in kept if (o.x_max - o.x_min) >= min_ext
             and params.v_min_kmh <= abs(o.velocity_kmh) <= params.v_max_kmh]
-    return kept
 
 
 def build_objects(segments: list[LineSegment], params: GroupingParams, row_dt: float,
@@ -324,8 +295,7 @@ def build_objects(segments: list[LineSegment], params: GroupingParams, row_dt: f
     "candidates -> groups -> mean line" figure.
     """
     groups = group_segments(segments, params, row_dt, col_dx)
-    bw = dict(params.band_weights)
-    objs = [merge_group(g, k, row_dt, col_dx, x_ref_m, bw, params.fit_iterations)
+    objs = [merge_group(g, k, row_dt, col_dx, x_ref_m, params.fit_iterations)
             for k, g in enumerate(groups)]
     objs = sorted(remove_duplicates(objs, params, channel_dx_m), key=lambda o: o.t_ref_s)
     for k, o in enumerate(objs):
