@@ -1,4 +1,4 @@
-"""Manual labels of the real segments (plan: Stage 11) - storage, session state, GUI.
+"""Manual labels of the real segments (plan: Stage 9) - storage, session state, labelling GUI.
 
 The real recordings have no ground truth, so the visible lines are marked by hand on the
 raw energy waterfall (log RMS, the image of the brief - *not* the detector output, to
@@ -36,7 +36,7 @@ HELP = """Annotation keys (mouse over the image):
   d               delete the finished line nearest to the mouse
   up / down       move the view by half a window (pageup / pagedown: a whole window)
   a               toggle: whole segment / window view
-  b               next background image (raw RMS -> HF band -> LF band)
+  b               next background image (raw RMS -> Stage-4 image)
   s               save           q  save and quit           h  this help
 Labels are saved automatically after every finished / undone / deleted line and when
 the window is closed; an unfinished line (no t / n yet) is not saved.

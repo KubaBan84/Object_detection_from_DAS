@@ -1,7 +1,9 @@
-"""Interactive tool to mark the visible lines of a real segment by hand (reference for Stage 11).
+"""Interactive tool to mark the visible lines of a real segment by hand (reference for Stage 9).
 
-Shows the raw energy waterfall of the segment (log10 RMS per 0.04 s, as in the brief;
-"b" switches to the HF / LF band images of Stage 4 - never the detector output) and
+This is only the labelling tool that produced the reference of the real segments; it is
+not part of the detection algorithm. It shows the raw energy waterfall of the segment
+(log10 RMS per 0.04 s, as in the brief; "b" switches to the Stage-4 image - never the
+detector output) and
 records polylines with a thick / thin label in physical units. Labels are saved to
 ``data/annotations/manual_labels.json``; existing labels of the segment are loaded, so
 the work can be continued or corrected later.
@@ -11,7 +13,7 @@ Usage::
     uv run python scripts/annotate_real.py --segment seg_kuba --annotator Kuba
     uv run python scripts/annotate_real.py --segment seg_kuba --list    # print labels only
 
-Keys: see ``das.annotation.HELP`` (printed at start). Plan: Stage 11.
+Keys: see ``das.annotation.HELP`` (printed at start). Plan: Stage 9.
 """
 from __future__ import annotations
 
@@ -38,11 +40,11 @@ def parse_args() -> argparse.Namespace:
 
 
 def backgrounds(seg) -> tuple[list[tuple[str, np.ndarray]], float, float]:
-    """Raw log-RMS waterfall and the two Stage-4 band images at the image resolution."""
+    """Raw log-RMS waterfall and the Stage-4 image, both at the image resolution."""
     pre = preprocess(seg.data, PreprocessingParams(), 1.0 / seg.dt, seg.dx,
                      crop=(seg.pad_before, seg.pad_after))
-    imgs = [("raw log10 RMS", np.log10(pre.common["raw"] + 1e-12))]
-    imgs += [(f"{b.upper()} band (Stage 4)", img) for b, img in pre.images.items()]
+    imgs = [("raw log10 RMS", np.log10(pre.stages["raw"] + 1e-12)),
+            ("Stage-4 image", pre.image)]
     return imgs, pre.row_dt, pre.col_dx
 
 

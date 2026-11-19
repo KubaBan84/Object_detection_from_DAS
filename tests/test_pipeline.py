@@ -1,5 +1,5 @@
-"""Tests of das.pipeline (Stage 12): the whole chain on a raw toy recording (two vehicles
-in opposite directions), timings, counts, features, saving and the stage cache."""
+"""Tests of das.pipeline (Stage 10): the whole chain on a raw toy recording (two vehicles
+in opposite directions), timings, counts, saving and the stage cache."""
 from __future__ import annotations
 
 import csv
@@ -10,9 +10,8 @@ import numpy as np
 import pytest
 
 from das.config import PipelineParams
-from das.pipeline import (STAGE_TIMERS, TABLE_FEATURES, load_cache, result_table,
-                          run_pipeline, save_result, stage_images)
-from das.velocity import TABLE_FIELDS, reported_velocity_kmh
+from das.pipeline import STAGE_TIMERS, load_cache, run_pipeline, save_result, stage_images
+from das.velocity import TABLE_FIELDS
 
 FS, DX, N_CH, DUR = 625.0, 5.1065, 52, 60.0
 VEHICLES = [(50.0, 10.0), (-60.0, 30.0)]        # (velocity km/h, time at the entry end [s])
@@ -39,62 +38,44 @@ def result():
 
 
 def test_pipeline_finds_both_vehicles_with_velocities(result):
+    assert len(result.objects) == 2
     for v_true, _ in VEHICLES:
-        cand = [o for o in result.objects if o.direction == np.sign(v_true)]
-        assert cand, f"no object in direction {np.sign(v_true)}"
-        best = max(cand, key=lambda o: o.x_max - o.x_min)
-        assert reported_velocity_kmh(best) == pytest.approx(v_true, rel=0.08)
-        assert best.x_max - best.x_min > 150
+        (obj,) = [o for o in result.objects if o.direction == np.sign(v_true)]
+        assert obj.velocity_kmh == pytest.approx(v_true, rel=0.05)
+        assert obj.x_max - obj.x_min > 150
 
 
-def test_timings_counts_and_features(result):
+def test_timings_and_counts(result):
     assert set(STAGE_TIMERS) <= set(result.timings)
     assert result.timings["total_s"] == pytest.approx(sum(result.timings[k] for k in STAGE_TIMERS))
-    c = result.counts
-    assert c["n_objects"] == len(result.objects)
-    assert c["strong_pos"] + c["strong_neg"] + c["weak_pos"] + c["weak_neg"] == c["n_objects"]
-    assert c["strong_pos"] + c["weak_pos"] >= 1 and c["strong_neg"] + c["weak_neg"] >= 1
-    assert len(result.features) == len(result.objects)
-    f = max(result.features, key=lambda d: d["extent_m"])
-    assert np.isfinite(f["thickness_s"]) and np.isfinite(f["snr_hf_db"]) and f["snr_hf_db"] > 3
-
-
-def test_options_features_off_and_stages_dropped():
-    res = run_pipeline(raw_recording(1)[: int(30 * FS)], PipelineParams(), FS, DX,
-                       keep_stages=False, features=False)
-    assert res.features == [] and "features_s" not in res.timings
-    assert res.pre.common == {} and all(e.stages == {} for e in res.enhanced.values())
-    assert res.objects                                            # still detected and tracked
+    assert result.counts == {"n_objects": 2, "n_pos": 1, "n_neg": 1}
+    assert result.n_channels == N_CH and result.col_dx == pytest.approx(DX / 8)
 
 
 def test_reused_stages_give_the_same_objects(result):
-    res = run_pipeline(raw_recording(), PipelineParams(), FS, DX, features=False,
-                       pre=result.pre, enhanced=result.enhanced, detections=result.detections)
+    res = run_pipeline(raw_recording(), PipelineParams(), FS, DX, pre=result.pre,
+                       enhanced=result.enhanced)
     assert res.timings["enhance_s"] < 0.01                       # not recomputed
-    assert [(o.direction, round(o.v_track_kmh, 6)) for o in res.objects] ==         [(o.direction, round(o.v_track_kmh, 6)) for o in result.objects]
+    assert [round(o.velocity_kmh, 6) for o in res.objects] == \
+        [round(o.velocity_kmh, 6) for o in result.objects]
 
 
 def test_save_result_csv_json_and_cache(result, tmp_path):
-    result.clusters = [f"c{k % 2}" for k in range(len(result.objects))]
     t0 = datetime(2024, 5, 7, 9, 0, 0)
     paths = save_result(result, "toy", t0, PipelineParams(), out_dir=tmp_path,
                         cache_dir=tmp_path / "cache", extra={"kind": "test"})
     with open(paths["csv"], encoding="utf-8") as fh:
         rows = list(csv.DictReader(fh))
-    assert len(rows) == len(result.objects)
-    assert list(rows[0]) == TABLE_FIELDS + TABLE_FEATURES + ["cluster"]
-    assert [r["cluster"] for r in rows] == result.clusters
+    assert len(rows) == len(result.objects) and list(rows[0]) == TABLE_FIELDS
     assert rows[0]["t_ref_clock"].startswith("09:00:")
     s = json.loads(paths["json"].read_text(encoding="utf-8"))
     assert s["name"] == "toy" and s["kind"] == "test" and s["start"] == t0.isoformat()
     assert s["counts"] == result.counts and s["timings_s"]["total_s"] > 0
     assert s["params"]["enh"]["n_angles"] == PipelineParams().enh.n_angles
-    assert sum(s["clusters"].values()) == len(result.objects)
+    assert set(s["thresholds"]) == {"pos", "neg"}
     cached = load_cache("toy", tmp_path / "cache")
     imgs = stage_images(result)
     assert set(cached) == set(imgs) == set(s["cache"]["images"])
-    assert {"raw_log_rms", "image_hf", "response_hf_pos", "fk_lf_neg"} <= set(cached)
-    assert np.allclose(cached["response_hf_pos"], imgs["response_hf_pos"])
+    assert {"raw_log_rms", "image", "response_pos", "fk_neg"} <= set(cached)
+    assert np.allclose(cached["response_pos"], imgs["response_pos"])
     assert load_cache("missing", tmp_path / "cache") == {}
-    result.clusters = []
-    assert all(r["cluster"] == "" for r in result_table(result))
