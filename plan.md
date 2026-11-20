@@ -194,10 +194,11 @@ Key findings (they drive the method):
 `src/das/detection.py`, `tests/test_detection.py`. `detect_lines(enhanced, params, v_range)`,
 ≈1 s per segment, on the map of every direction:
 1. Threshold: Otsu of the positive response, **at least median + 4 σ** (robust σ).
-2. `oriented_opening` – union of openings with 9 line elements (41 px) of the admissible slopes.
-3. Connected components (`label`, `regionprops`): area ≥ 1500 px, extent ≥ 40 m.
-4. `ridge_along_time` – local maxima along time (NMS ±5 rows), one ridge pixel per column.
-5. `sequential_ransac` – up to 4 lines per component (two touching trams → two lines; a
+2. Connected components (`label`, `regionprops`): area ≥ 1500 px, extent ≥ 40 m.
+   (An oriented morphological opening between steps 1 and 2 was removed on 20.11 - neutral in
+   the ablation, experiments log #26.)
+3. `ridge_along_time` – local maxima along time (NMS ±5 rows), one ridge pixel per column.
+4. `sequential_ransac` – up to 4 lines per component (two touching trams → two lines; a
    non-overlapping later line only extends the line it continues).
 6. Line thickness = mean number of component pixels per column assigned to the line.
 

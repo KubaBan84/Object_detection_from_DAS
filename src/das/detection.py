@@ -5,7 +5,6 @@ upsampled space, ``col_dx`` m), one per direction (+1 / -1). Each map is process
 separately, so a line can only have the slope sign of its direction::
 
     response --threshold (Otsu, floored at 4 sigma)--> binary mask
-             --oriented opening (line elements of the admissible slopes)--> opened mask
              --connected components (area / extent filters)-->
              --ridge = local maxima along time--> sequential RANSAC line fit
              --> LineSegment candidates (pixel coordinates)
@@ -71,7 +70,7 @@ class LineSegment:
 class Detections:
     """All line candidates of one recording (both directions) and the intermediate masks.
 
-    ``stages`` keys: ``{pos|neg}_{binary|opened|ridge|mask}``; ``thresholds[pos|neg]``
+    ``stages`` keys: ``{pos|neg}_{binary|ridge|mask}``; ``thresholds[pos|neg]``
     holds the data-driven threshold of every map.
     """
     segments: list[LineSegment] = field(default_factory=list)
@@ -109,36 +108,6 @@ def slope_ok(slope: float | np.ndarray, bounds: tuple[float, float], margin: flo
     """True where the slope lies in the admissible range (relative ``margin`` of tolerance)."""
     lo, hi = bounds
     return (np.asarray(slope) >= lo - margin * abs(lo)) & (np.asarray(slope) <= hi + margin * abs(hi))
-
-
-def line_structuring_elements(length: int, slopes: np.ndarray) -> list[np.ndarray]:
-    """Binary line structuring elements (uint8) of ``length`` px along each slope [col/row]."""
-    out = []
-    for s in np.atleast_1d(slopes):
-        a = np.arctan(s)                                   # angle from the vertical (time) axis
-        hr = int(np.ceil(0.5 * (length - 1) * abs(np.cos(a))))
-        hc = int(np.ceil(0.5 * (length - 1) * abs(np.sin(a))))
-        se = np.zeros((2 * hr + 1, 2 * hc + 1), dtype=np.uint8)
-        dr, dc = 0.5 * (length - 1) * np.cos(a), 0.5 * (length - 1) * np.sin(a)
-        p0 = (int(round(hc - dc)), int(round(hr - dr)))   # cv2 points are (x = col, y = row)
-        p1 = (int(round(hc + dc)), int(round(hr + dr)))
-        cv2.line(se, p0, p1, 1, 1)
-        out.append(se)
-    return out
-
-
-def oriented_opening(mask: np.ndarray, length: int, slopes: np.ndarray) -> np.ndarray:
-    """Union of binary openings with line elements of all admissible slopes.
-
-    Keeps the pixels that belong to a run of at least ``length`` px along *some*
-    admissible direction: removes specks and structures oriented like noise (vertical /
-    horizontal streaks) and keeps elongated slanted lines.
-    """
-    src = mask.astype(np.uint8)
-    out = np.zeros_like(src)
-    for se in line_structuring_elements(length, slopes):
-        out |= cv2.morphologyEx(src, cv2.MORPH_OPEN, se)
-    return out.astype(bool)
 
 
 def ridge_along_time(response: np.ndarray, mask: np.ndarray, nms_rows: int = 1) -> np.ndarray:
@@ -240,22 +209,20 @@ def detection_threshold(response: np.ndarray, params: DetectionParams) -> float:
 def detect_thick_lines(response: np.ndarray, params: DetectionParams, row_dt: float,
                        col_dx: float, direction: int, v_range_kmh: tuple[float, float]
                        ) -> tuple[list[LineSegment], dict[str, np.ndarray], float]:
-    """Threshold -> oriented opening -> components -> ridge -> sequential RANSAC.
+    """Threshold -> components -> ridge -> sequential RANSAC.
 
     Components smaller than ``min_area_px`` or spanning less than ``min_extent_m`` along
     the cable are rejected. In each remaining component the ridge (local maxima of the
     response along time) is fitted with sequential RANSAC, so touching parallel thick
     lines give separate lines. Each component pixel is assigned to the nearest fitted
     line (in rows); the line thickness is the mean number of assigned pixels per column.
-    Returns (segments, stages {binary, opened, ridge, mask}, threshold).
+    Returns (segments, stages {binary, ridge, mask}, threshold).
     """
     bounds = slope_bounds(v_range_kmh, direction, row_dt, col_dx)
     thr = detection_threshold(response, params)
     binary = response > thr
-    slopes = np.linspace(bounds[0], bounds[1], params.open_angles)
-    opened = oriented_opening(binary, params.open_length_px, slopes)
-    ridge = ridge_along_time(response, opened, params.ridge_nms_rows)
-    lab = label(opened, connectivity=2)
+    ridge = ridge_along_time(response, binary, params.ridge_nms_rows)
+    lab = label(binary, connectivity=2)
     mask = np.zeros(response.shape, dtype=bool)
     segments = []
     min_cols = params.min_extent_m / col_dx
@@ -284,7 +251,7 @@ def detect_thick_lines(response: np.ndarray, params: DetectionParams, row_dt: fl
                                         direction=direction,
                                         thickness_px=float(own.sum() / n_cols)))
         mask[rr, cc] = True
-    stages = {"binary": binary, "opened": opened, "ridge": ridge, "mask": mask}
+    stages = {"binary": binary, "ridge": ridge, "mask": mask}
     return segments, stages, thr
 
 

@@ -90,9 +90,7 @@ class DetectionParams:
     # floor of the threshold [robust sigma]: without it, Otsu in a direction without heavy
     # traffic separates only noise texture; 4 (not 6) so that wide, diffuse lines are kept
     min_sigma: float = 4.0
-    open_length_px: int = 41          # line structuring element of the oriented opening
-    open_angles: int = 9              # number of element slopes inside [v_min, v_max]
-    min_area_px: int = 1500           # minimal component area after the opening
+    min_area_px: int = 1500           # minimal component area of the binary mask
     min_extent_m: float = 40.0        # minimal extent of a component along the cable
     slope_margin: float = 0.1         # relative tolerance of the velocity fan for line slopes
     ridge_nms_rows: int = 5           # ridge non-maximum suppression along time (0.2 s)

@@ -108,7 +108,7 @@ NODES = [
     ("fb", "Stage 5 - x8 upsampling along the cable + matched line-filter bank\n"
      "(24 angles, 81 px) -> robust z response map per direction", "enh"),
     ("thr", "Stage 6 - threshold: Otsu, at least median + 4 sigma (robust)\n"
-     "-> oriented morphological opening (9 line elements, 41 px)", "det"),
+     "-> binary mask of the strong line pixels", "det"),
     ("ransac", "Stage 6 - connected components (area >= 1500 px, extent >= 40 m),\n"
      "ridge along time + sequential RANSAC -> line candidates", "det"),
     ("group", "Stage 7 - grouping (same-line / continuation links, connected components),\n"
@@ -123,8 +123,8 @@ REMOVED = {"cm": "removed: cable-wide events\n(common mode)",
            "env": "removed: oscillation (envelope),\nchannel gain differences",
            "fk": "removed: |v| outside the fan\n(horizontal / vertical stripes,\n"
                  "other direction)",
-           "thr": "removed: noise texture,\nspecks, streaks",
-           "ransac": "removed: small / short\ncomponents",
+           "thr": "removed: noise texture\n(below the threshold)",
+           "ransac": "removed: specks, small /\nshort components",
            "group": "merged: fragments,\nduplicates"}
 
 
