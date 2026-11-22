@@ -3,7 +3,7 @@
 <html lang="en">
 <head><meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<title>report_compact</title><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.1.10/require.min.js"></script>
+<title>report_compact_v2</title><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.1.10/require.min.js"></script>
 <style type="text/css">
     pre { line-height: 125%; }
 td.linenos .normal { color: inherit; background-color: transparent; padding-left: 5px; padding-right: 5px; }
@@ -10260,15 +10260,26 @@ its own test reference.</p>
 <div class="jp-InputPrompt jp-InputArea-prompt">In [31]:</div>
 <div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
 <div class="cm-editor cm-s-jupyter">
-<div class="highlight hl-ipython3"><pre><span></span><span class="n">exp</span> <span class="o">=</span> <span class="n">read_csv</span><span class="p">(</span><span class="s2">"experiments.csv"</span><span class="p">)</span>
+<div class="highlight hl-ipython3"><pre><span></span><span class="n">exp</span> <span class="o">=</span> <span class="p">{</span><span class="n">r</span><span class="p">[</span><span class="s2">"variant"</span><span class="p">]:</span> <span class="n">r</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">read_csv</span><span class="p">(</span><span class="s2">"experiments.csv"</span><span class="p">)}</span>
 <span class="n">COLS</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"variant"</span><span class="p">,</span> <span class="s2">"syn_recall_thick"</span><span class="p">,</span> <span class="s2">"syn_precision"</span><span class="p">,</span> <span class="s2">"syn_f1"</span><span class="p">,</span> <span class="s2">"real_recall_thick"</span><span class="p">,</span>
         <span class="s2">"real_precision"</span><span class="p">,</span> <span class="s2">"real_f1"</span><span class="p">,</span> <span class="s2">"decision"</span><span class="p">]</span>
 <span class="n">HEAD</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"variant"</span><span class="p">,</span> <span class="s2">"syn thick R"</span><span class="p">,</span> <span class="s2">"syn P"</span><span class="p">,</span> <span class="s2">"syn F1"</span><span class="p">,</span> <span class="s2">"real thick R"</span><span class="p">,</span> <span class="s2">"real P"</span><span class="p">,</span> <span class="s2">"real F1"</span><span class="p">,</span>
         <span class="s2">"decision"</span><span class="p">]</span>
-<span class="k">for</span> <span class="n">group</span><span class="p">,</span> <span class="n">title</span> <span class="ow">in</span> <span class="p">((</span><span class="s2">"final"</span><span class="p">,</span> <span class="s2">"Final method"</span><span class="p">),</span> <span class="p">(</span><span class="s2">"ablation"</span><span class="p">,</span> <span class="s2">"Ablation (one step switched off)"</span><span class="p">),</span>
-                     <span class="p">(</span><span class="s2">"method"</span><span class="p">,</span> <span class="s2">"Method comparison"</span><span class="p">),</span> <span class="p">(</span><span class="s2">"sweep"</span><span class="p">,</span> <span class="s2">"Parameter sweeps"</span><span class="p">)):</span>
-    <span class="n">display</span><span class="p">(</span><span class="n">Markdown</span><span class="p">(</span><span class="sa">f</span><span class="s2">"**</span><span class="si">{</span><span class="n">title</span><span class="si">}</span><span class="s2">**"</span><span class="p">))</span>
-    <span class="n">table</span><span class="p">([</span><span class="n">r</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">exp</span> <span class="k">if</span> <span class="n">r</span><span class="p">[</span><span class="s2">"group"</span><span class="p">]</span> <span class="o">==</span> <span class="n">group</span><span class="p">],</span> <span class="n">COLS</span><span class="p">,</span> <span class="n">HEAD</span><span class="p">)</span>
+<span class="n">display</span><span class="p">(</span><span class="n">Markdown</span><span class="p">(</span><span class="s2">"**Final method**"</span><span class="p">))</span>
+<span class="n">table</span><span class="p">([</span><span class="n">r</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">exp</span><span class="o">.</span><span class="n">values</span><span class="p">()</span> <span class="k">if</span> <span class="n">r</span><span class="p">[</span><span class="s2">"group"</span><span class="p">]</span> <span class="o">==</span> <span class="s2">"final"</span><span class="p">],</span> <span class="n">COLS</span><span class="p">,</span> <span class="n">HEAD</span><span class="p">)</span>
+<span class="n">display</span><span class="p">(</span><span class="n">Markdown</span><span class="p">(</span><span class="s2">"**Ablation (one step switched off)**"</span><span class="p">))</span>
+<span class="n">table</span><span class="p">([</span><span class="n">r</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">exp</span><span class="o">.</span><span class="n">values</span><span class="p">()</span> <span class="k">if</span> <span class="n">r</span><span class="p">[</span><span class="s2">"group"</span><span class="p">]</span> <span class="o">==</span> <span class="s2">"ablation"</span><span class="p">],</span> <span class="n">COLS</span><span class="p">,</span> <span class="n">HEAD</span><span class="p">)</span>
+<span class="c1"># parameter values: one changed value per row, the final value in brackets</span>
+<span class="n">PARAMS</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">"threshold floor 3 sigma"</span><span class="p">:</span> <span class="s2">"threshold floor 3σ (final 4σ)"</span><span class="p">,</span>
+    <span class="s2">"threshold floor 6 sigma"</span><span class="p">:</span> <span class="s2">"threshold floor 6σ (final 4σ)"</span><span class="p">,</span>
+    <span class="s2">"kernel length 41 px"</span><span class="p">:</span> <span class="s2">"kernel length 41 px (final 81 px)"</span><span class="p">,</span>
+    <span class="s2">"upsampling x4"</span><span class="p">:</span> <span class="s2">"upsampling along the cable ×4 (final ×8)"</span><span class="p">,</span>
+    <span class="s2">"min. component area 800 px"</span><span class="p">:</span> <span class="s2">"min. component area 800 px (final 1500 px)"</span><span class="p">,</span>
+    <span class="s2">"grouping time tolerance 1 s"</span><span class="p">:</span> <span class="s2">"grouping time tolerance 1 s (final 1.5 s)"</span><span class="p">,</span>
+<span class="p">}</span>
+<span class="n">display</span><span class="p">(</span><span class="n">Markdown</span><span class="p">(</span><span class="s2">"**Parameter values (one value changed)**"</span><span class="p">))</span>
+<span class="n">table</span><span class="p">([{</span><span class="o">**</span><span class="n">exp</span><span class="p">[</span><span class="n">v</span><span class="p">],</span> <span class="s2">"variant"</span><span class="p">:</span> <span class="n">label</span><span class="p">}</span> <span class="k">for</span> <span class="n">v</span><span class="p">,</span> <span class="n">label</span> <span class="ow">in</span> <span class="n">PARAMS</span><span class="o">.</span><span class="n">items</span><span class="p">()],</span> <span class="n">COLS</span><span class="p">,</span> <span class="n">HEAD</span><span class="p">)</span>
 </pre></div>
 </div>
 </div>
@@ -10425,7 +10436,7 @@ its own test reference.</p>
 <div class="jp-OutputArea-child">
 <div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
 <div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-OutputArea-output" data-mime-type="text/markdown" tabindex="0">
-<p><strong>Method comparison</strong></p>
+<p><strong>Parameter values (one value changed)</strong></p>
 </div>
 </div>
 <div class="jp-OutputArea-child">
@@ -10446,94 +10457,7 @@ its own test reference.</p>
 </thead>
 <tbody>
 <tr>
-<td>Sato ridge filter instead of the filter bank</td>
-<td>0.918</td>
-<td>0.955</td>
-<td>0.936</td>
-<td>0.739</td>
-<td>0.596</td>
-<td>0.660</td>
-<td>worse</td>
-</tr>
-<tr>
-<td>fixed threshold 6 sigma instead of Otsu</td>
-<td>0.980</td>
-<td>0.885</td>
-<td>0.930</td>
-<td>0.609</td>
-<td>0.815</td>
-<td>0.697</td>
-<td>worse</td>
-</tr>
-<tr>
-<td>band 1-8 Hz (best low-frequency band)</td>
-<td>0.980</td>
-<td>0.944</td>
-<td>0.962</td>
-<td>0.565</td>
-<td>1.000</td>
-<td>0.722</td>
-<td>worse</td>
-</tr>
-<tr>
-<td>band 20-312.5 Hz</td>
-<td>0.980</td>
-<td>0.958</td>
-<td>0.969</td>
-<td>0.783</td>
-<td>0.643</td>
-<td>0.706</td>
-<td>vetoed: better only on synthetic</td>
-</tr>
-<tr>
-<td>broadband 0.2-312.5 Hz</td>
-<td>0.980</td>
-<td>0.920</td>
-<td>0.949</td>
-<td>0.870</td>
-<td>0.795</td>
-<td>0.831</td>
-<td>no significant change</td>
-</tr>
-<tr>
-<td>baseline: Canny + HoughLinesP on the raw image</td>
-<td>0.735</td>
-<td>0.716</td>
-<td>0.725</td>
-<td>0.000</td>
-<td>0.040</td>
-<td>0.000</td>
-<td>worse</td>
-</tr>
-</tbody>
-</table>
-</div>
-</div>
-<div class="jp-OutputArea-child">
-<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
-<div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-OutputArea-output" data-mime-type="text/markdown" tabindex="0">
-<p><strong>Parameter sweeps</strong></p>
-</div>
-</div>
-<div class="jp-OutputArea-child">
-<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
-<div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-OutputArea-output" data-mime-type="text/markdown" tabindex="0">
-<table>
-<thead>
-<tr>
-<th>variant</th>
-<th>syn thick R</th>
-<th>syn P</th>
-<th>syn F1</th>
-<th>real thick R</th>
-<th>real P</th>
-<th>real F1</th>
-<th>decision</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>threshold floor 3 sigma</td>
+<td>threshold floor 3σ (final 4σ)</td>
 <td>0.980</td>
 <td>0.925</td>
 <td>0.952</td>
@@ -10543,17 +10467,7 @@ its own test reference.</p>
 <td>worse</td>
 </tr>
 <tr>
-<td>threshold floor 5 sigma</td>
-<td>0.980</td>
-<td>0.925</td>
-<td>0.952</td>
-<td>0.826</td>
-<td>0.875</td>
-<td>0.850</td>
-<td>no significant change</td>
-</tr>
-<tr>
-<td>threshold floor 6 sigma</td>
+<td>threshold floor 6σ (final 4σ)</td>
 <td>0.980</td>
 <td>0.925</td>
 <td>0.952</td>
@@ -10563,7 +10477,7 @@ its own test reference.</p>
 <td>worse</td>
 </tr>
 <tr>
-<td>kernel length 41 px</td>
+<td>kernel length 41 px (final 81 px)</td>
 <td>0.980</td>
 <td>0.927</td>
 <td>0.953</td>
@@ -10573,27 +10487,7 @@ its own test reference.</p>
 <td>worse</td>
 </tr>
 <tr>
-<td>kernel length 121 px</td>
-<td>0.980</td>
-<td>0.955</td>
-<td>0.967</td>
-<td>0.870</td>
-<td>0.717</td>
-<td>0.786</td>
-<td>vetoed: better only on synthetic</td>
-</tr>
-<tr>
-<td>12 kernel angles</td>
-<td>0.980</td>
-<td>0.925</td>
-<td>0.952</td>
-<td>0.913</td>
-<td>0.809</td>
-<td>0.858</td>
-<td>no significant change</td>
-</tr>
-<tr>
-<td>upsampling x4</td>
+<td>upsampling along the cable ×4 (final ×8)</td>
 <td>0.918</td>
 <td>0.982</td>
 <td>0.949</td>
@@ -10603,7 +10497,7 @@ its own test reference.</p>
 <td>worse</td>
 </tr>
 <tr>
-<td>min. component area 800 px</td>
+<td>min. component area 800 px (final 1500 px)</td>
 <td>1.000</td>
 <td>0.920</td>
 <td>0.958</td>
@@ -10613,17 +10507,7 @@ its own test reference.</p>
 <td>worse</td>
 </tr>
 <tr>
-<td>min. component area 3000 px</td>
-<td>0.918</td>
-<td>0.982</td>
-<td>0.949</td>
-<td>0.870</td>
-<td>0.857</td>
-<td>0.863</td>
-<td>no significant change</td>
-</tr>
-<tr>
-<td>grouping time tolerance 1 s</td>
+<td>grouping time tolerance 1 s (final 1.5 s)</td>
 <td>0.980</td>
 <td>0.925</td>
 <td>0.952</td>
@@ -10631,16 +10515,6 @@ its own test reference.</p>
 <td>0.660</td>
 <td>0.766</td>
 <td>worse</td>
-</tr>
-<tr>
-<td>grouping time tolerance 2 s</td>
-<td>0.980</td>
-<td>0.925</td>
-<td>0.952</td>
-<td>0.913</td>
-<td>0.809</td>
-<td>0.858</td>
-<td>no significant change</td>
 </tr>
 </tbody>
 </table>
@@ -10671,9 +10545,9 @@ its own test reference.</p>
 <span class="s2">  (recall </span><span class="si">{</span><span class="n">e</span><span class="p">(</span><span class="s1">'threshold floor 6 sigma'</span><span class="p">,</span><span class="w"> </span><span class="s1">'real_recall_thick'</span><span class="p">)</span><span class="si">}</span><span class="s2">).</span>
 <span class="s2">- **common mode**, **RMS envelope**, **several RANSAC lines** and **linking of the candidates**</span>
 <span class="s2">  each add a few F1 points, mostly in precision (fewer fragments).</span>
-
-<span class="s2">**The simulator is not the real street.** Some settings (e.g. the 20-312.5 Hz band, 121-px</span>
-<span class="s2">kernels) are better on synthetic data but lose real thick lines, and the rule vetoes them.</span>
+<span class="s2">- **Parameter values**: shorter kernels, a coarser upsampling, a smaller minimal component area or</span>
+<span class="s2">  a shorter grouping tolerance each lower the real F1 (to </span><span class="si">{</span><span class="n">e</span><span class="p">(</span><span class="s1">'kernel length 41 px'</span><span class="p">)</span><span class="si">}</span><span class="s2">,</span>
+<span class="s2">  </span><span class="si">{</span><span class="n">e</span><span class="p">(</span><span class="s1">'upsampling x4'</span><span class="p">)</span><span class="si">}</span><span class="s2">, </span><span class="si">{</span><span class="n">e</span><span class="p">(</span><span class="s1">'min. component area 800 px'</span><span class="p">)</span><span class="si">}</span><span class="s2"> and </span><span class="si">{</span><span class="n">e</span><span class="p">(</span><span class="s1">'grouping time tolerance 1 s'</span><span class="p">)</span><span class="si">}</span><span class="s2">).</span>
 <span class="s2">"""</span><span class="p">))</span>
 </pre></div>
 </div>
@@ -10701,118 +10575,10 @@ do not reach the threshold as one piece.</li>
 (recall 0.609).</li>
 <li><strong>common mode</strong>, <strong>RMS envelope</strong>, <strong>several RANSAC lines</strong> and <strong>linking of the candidates</strong>
 each add a few F1 points, mostly in precision (fewer fragments).</li>
+<li><strong>Parameter values</strong>: shorter kernels, a coarser upsampling, a smaller minimal component area or
+a shorter grouping tolerance each lower the real F1 (to 0.801,
+0.800, 0.817 and 0.766).</li>
 </ul>
-<p><strong>The simulator is not the real street.</strong> Some settings (e.g. the 20-312.5 Hz band, 121-px
-kernels) are better on synthetic data but lose real thick lines, and the rule vetoes them.</p>
-</div>
-</div>
-</div>
-</div>
-</div>
-<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell" id="cell-id=69019658">
-<div class="jp-Cell-inputWrapper" tabindex="0">
-<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
-</div>
-<div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
-</div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
-<p><strong>Removed step: oriented morphological opening.</strong> An earlier version opened the binary mask with
-line-shaped structuring elements of the admissible slopes, to delete specks and horizontal /
-vertical streaks before the components were labelled. In the ablation it made no difference on
-the real data (the same 43 objects with the same recall and precision; 40 velocities changed by
-less than 0.3 km/h, 3 by 1-6 km/h, and the velocity difference to the labels became slightly
-smaller), and switching it off even removed one synthetic false positive. The f-k fan filter and the line-filter bank already remove the streaks, and the
-component size filter removes the specks, so the step was removed.</p>
-<p><strong>Unsuccessful approaches.</strong></p>
-</div>
-</div>
-</div>
-</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell" id="cell-id=64353154">
-<div class="jp-Cell-inputWrapper" tabindex="0">
-<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
-</div>
-<div class="jp-InputArea jp-Cell-inputArea">
-<div class="jp-InputPrompt jp-InputArea-prompt">In [33]:</div>
-<div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
-<div class="cm-editor cm-s-jupyter">
-<div class="highlight hl-ipython3"><pre><span></span><span class="n">rows</span> <span class="o">=</span> <span class="p">[</span>
-    <span class="p">(</span><span class="s2">"Canny edges + probabilistic Hough on the log-RMS image (textbook baseline)"</span><span class="p">,</span>
-     <span class="s2">"baseline: Canny + HoughLinesP on the raw image"</span><span class="p">,</span>
-     <span class="s2">"Canny finds the edges of the noise texture and both sides of every wide line, not the line"</span><span class="p">),</span>
-    <span class="p">(</span><span class="s2">"Hessian ridge filter (Sato) instead of the filter bank"</span><span class="p">,</span>
-     <span class="s2">"Sato ridge filter instead of the filter bank"</span><span class="p">,</span>
-     <span class="s2">"fixed scale; wide tram lines and weak parts fall apart; 2× slower"</span><span class="p">),</span>
-    <span class="p">(</span><span class="s2">"Fixed threshold 6σ instead of Otsu + 4σ floor"</span><span class="p">,</span> <span class="s2">"fixed threshold 6 sigma instead of Otsu"</span><span class="p">,</span>
-     <span class="s2">"wide, diffuse real tram lines have z ≈ 4-6"</span><span class="p">),</span>
-    <span class="p">(</span><span class="s2">"Low-frequency band 1-8 Hz"</span><span class="p">,</span> <span class="s2">"band 1-8 Hz (best low-frequency band)"</span><span class="p">,</span>
-     <span class="s2">"blind for x &lt; 55 m and for some lanes"</span><span class="p">),</span>
-<span class="p">]</span>
-<span class="n">lines</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"| approach | synthetic F1 | real thick recall | why it failed |"</span><span class="p">,</span> <span class="s2">"|---|---|---|---|"</span><span class="p">]</span>
-<span class="n">lines</span> <span class="o">+=</span> <span class="p">[</span><span class="sa">f</span><span class="s2">"| </span><span class="si">{</span><span class="n">a</span><span class="si">}</span><span class="s2"> | </span><span class="si">{</span><span class="n">e</span><span class="p">(</span><span class="n">v</span><span class="p">,</span><span class="w"> </span><span class="s1">'syn_f1'</span><span class="p">)</span><span class="si">}</span><span class="s2"> | </span><span class="si">{</span><span class="n">e</span><span class="p">(</span><span class="n">v</span><span class="p">,</span><span class="w"> </span><span class="s1">'real_recall_thick'</span><span class="p">)</span><span class="si">}</span><span class="s2"> | </span><span class="si">{</span><span class="n">w</span><span class="si">}</span><span class="s2"> |"</span> <span class="k">for</span> <span class="n">a</span><span class="p">,</span> <span class="n">v</span><span class="p">,</span> <span class="n">w</span> <span class="ow">in</span> <span class="n">rows</span><span class="p">]</span>
-<span class="n">lines</span> <span class="o">+=</span> <span class="p">[</span><span class="s2">"| Per-column centroids + one RANSAC line per component | - | - | for two touching "</span>
-          <span class="s2">"trams the centroid lies between them, only fragments remain |"</span><span class="p">,</span>
-          <span class="s2">"| Band choice by the separability d' of the band power | - | - | circular selection "</span>
-          <span class="s2">"of the cells, always picks the widest band |"</span><span class="p">]</span>
-<span class="n">display</span><span class="p">(</span><span class="n">Markdown</span><span class="p">(</span><span class="s2">"</span><span class="se">\n</span><span class="s2">"</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">lines</span><span class="p">)))</span>
-</pre></div>
-</div>
-</div>
-</div>
-</div>
-<div class="jp-Cell-outputWrapper">
-<div class="jp-Collapser jp-OutputCollapser jp-Cell-outputCollapser">
-</div>
-<div class="jp-OutputArea jp-Cell-outputArea">
-<div class="jp-OutputArea-child">
-<div class="jp-OutputPrompt jp-OutputArea-prompt"></div>
-<div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-OutputArea-output" data-mime-type="text/markdown" tabindex="0">
-<table>
-<thead>
-<tr>
-<th>approach</th>
-<th>synthetic F1</th>
-<th>real thick recall</th>
-<th>why it failed</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Canny edges + probabilistic Hough on the log-RMS image (textbook baseline)</td>
-<td>0.725</td>
-<td>0.000</td>
-<td>Canny finds the edges of the noise texture and both sides of every wide line, not the line</td>
-</tr>
-<tr>
-<td>Hessian ridge filter (Sato) instead of the filter bank</td>
-<td>0.936</td>
-<td>0.739</td>
-<td>fixed scale; wide tram lines and weak parts fall apart; 2× slower</td>
-</tr>
-<tr>
-<td>Fixed threshold 6σ instead of Otsu + 4σ floor</td>
-<td>0.930</td>
-<td>0.609</td>
-<td>wide, diffuse real tram lines have z ≈ 4-6</td>
-</tr>
-<tr>
-<td>Low-frequency band 1-8 Hz</td>
-<td>0.962</td>
-<td>0.565</td>
-<td>blind for x &lt; 55 m and for some lanes</td>
-</tr>
-<tr>
-<td>Per-column centroids + one RANSAC line per component</td>
-<td>-</td>
-<td>-</td>
-<td>for two touching trams the centroid lies between them, only fragments remain</td>
-</tr>
-<tr>
-<td>Band choice by the separability d' of the band power</td>
-<td>-</td>
-<td>-</td>
-<td>circular selection of the cells, always picks the widest band</td>
-</tr>
-</tbody>
-</table>
 </div>
 </div>
 </div>
@@ -10828,8 +10594,7 @@ component size filter removes the specks, so the step was removed.</p>
 <ul>
 <li>The thick lines of trams and heavy trucks are found with a high recall on real and synthetic
 data, and their velocities are accurate to ≈ 3 km/h (synthetic ground truth).</li>
-<li>Every step is justified by an experiment; a step that did not help (the oriented opening) was
-removed.</li>
+<li>Every step and the key parameter values are justified by an experiment (section 11).</li>
 <li>The method is general: all thresholds are relative to the noise of each image and nothing
 refers to a specific line or segment. The same code runs on any 2-minute window and on the
 59-channel synthetic data. It is fast and fully vectorised.</li>
@@ -10860,9 +10625,8 @@ by its mean slope. A vehicle slower than 5 km/h (e.g. stopped at a tram stop) di
 <h2 id="13.-References-and-sources">13. References and sources<a class="anchor-link" href="#13.-References-and-sources">¶</a></h2><p><strong>Libraries</strong> (allowed by the brief)</p>
 <ul>
 <li><strong>NumPy</strong>: FFT (per-channel FFT, band-pass, Welch PSD, STFT, f-k), robust statistics, line fits.</li>
-<li><strong>OpenCV</strong>: 2-D filtering (line-filter bank), resizing, grey-level dilation (ridge), Canny and
-probabilistic Hough (baseline).</li>
-<li><strong>scikit-image</strong>: Otsu threshold, connected components, RANSAC, Sato filter (comparison).</li>
+<li><strong>OpenCV</strong>: 2-D filtering (line-filter bank), resizing, grey-level dilation (ridge).</li>
+<li><strong>scikit-image</strong>: Otsu threshold, connected components, RANSAC.</li>
 <li><strong>Matplotlib</strong>: all figures and the labelling tool. Pillow was allowed but not needed.</li>
 <li>Tooling only: uv, pytest, Jupyter / nbconvert.</li>
 </ul>
@@ -10875,9 +10639,6 @@ filters</em>, IEEE Trans. Medical Imaging 8(3), 1989 - bank of rotated line kern
 <li>Ö. Yilmaz, <em>Seismic Data Analysis</em>, SEG, 2001 - f-k (velocity) filtering.</li>
 <li>P. D. Welch, IEEE Trans. Audio and Electroacoustics 15(2), 1967 - Welch PSD.</li>
 <li>B. P. Welford, Technometrics 4(3), 1962; Chan, Golub, LeVeque, 1979 - running statistics.</li>
-<li>Y. Sato et al., Medical Image Analysis 2(2), 1998 - Hessian ridge filter (comparison).</li>
-<li>J. Canny, IEEE Trans. PAMI 8(6), 1986; J. Matas et al., CVIU 78(1), 2000 - Canny and
-probabilistic Hough (baseline).</li>
 <li>A. H. Hartog, <em>An Introduction to Distributed Optical Fibre Sensors</em>, CRC Press, 2017;
 N. J. Lindsey et al., Geophysical Research Letters 47(16), 2020 - DAS background, vehicles as
 slanted lines.</li>
