@@ -20,8 +20,8 @@ For every entry: WHAT was used and WHERE (module / report section).
   f-k transform - no SciPy), `lib.stride_tricks.sliding_window_view` (STFT / Welch frames),
   `linalg.svd` (line fit of the RANSAC inliers), robust statistics. All modules.
 - **OpenCV**: `filter2D` (directional matched-filter bank), `resize` (`INTER_LINEAR` spatial
-  upsampling, `INTER_AREA` report figures), `morphologyEx` / `dilate` (oriented opening, ridge
-  non-maximum suppression), `line` (line structuring elements), `GaussianBlur`, `Canny` and
+  upsampling, `INTER_AREA` report figures), `dilate` (ridge non-maximum suppression),
+  `GaussianBlur`, `Canny` and
   `HoughLinesP` (classical baseline of the experiments).
 - **scikit-image**: `filters.threshold_otsu` (detection threshold), `measure.label` /
   `regionprops` (connected components), `measure.ransac` / `LineModelND` (line fit),
@@ -39,9 +39,6 @@ and examples of the functions listed above.
   24(6), 1981. → sequential RANSAC of the thick lines (Stage 6).
 - Otsu threshold: N. Otsu, *A threshold selection method from gray-level histograms*, IEEE
   Trans. Systems, Man, and Cybernetics 9(1), 1979. → detection threshold (Stage 6).
-- Mathematical morphology (opening with line structuring elements): J. Serra, *Image Analysis
-  and Mathematical Morphology*, Academic Press, 1982; P. Soille, *Morphological Image
-  Analysis*, Springer, 2003. → oriented opening (Stage 6).
 - Oriented matched filters for line detection: S. Chaudhuri et al., *Detection of blood vessels
   in retinal images using two-dimensional matched filters*, IEEE Trans. Medical Imaging 8(3),
   1989 - the idea of a bank of rotated line kernels with a Gaussian cross-profile (Stage 5).

@@ -12,7 +12,7 @@ flowchart TD
     D --> E[Stage 4: log10 envelope / channel median, clip 0..p99.5 -> image 3000 x 52]
     E --> F[Stage 5: f-k fan filter 5-150 km/h, separately for v > 0 and v < 0]
     F --> G[Stage 5: x8 upsampling along the cable + matched line-filter bank, 24 angles, 81 px -> robust z map per direction]
-    G --> H[Stage 6: threshold Otsu, at least median + 4 sigma -> oriented opening with 9 line elements]
+    G --> H[Stage 6: threshold Otsu, at least median + 4 sigma -> binary mask]
     H --> I[Stage 6: connected components, area and extent filter -> ridge along time + sequential RANSAC -> line candidates]
     I --> J[Stage 7: link candidates - same line or continuation - connected components]
     J --> K[Stage 7: robust weighted mean line per group, duplicate removal, plausibility 5-150 km/h and >= 8 channels]

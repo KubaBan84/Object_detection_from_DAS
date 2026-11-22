@@ -25,9 +25,9 @@ Alternatives if time allows:
 |---|---|---|---|
 | 1 | Data | `eda_global_overview`, `eda_seg_kuba_waterfall` | heavy tails (kurtosis 435); lines visible only in the log energy |
 | 2 | Frequencies | `spectral_seg_kuba_fft`, `spectral_band_selection` | FFT per channel; band 60–312.5 Hz chosen by the line SNR (5.84, best of 16 × 19 bands) |
-| 3 | Block diagram | `flowchart` | band-pass → envelope → log → f-k fan per direction → filter bank → threshold + opening → RANSAC → grouping → velocity |
+| 3 | Block diagram | `flowchart` | band-pass → envelope → log → f-k fan per direction → filter bank → threshold → components → RANSAC → grouping → velocity |
 | 4 | Noise removal | `step_seg_kuba_preprocessing`, `step_seg_kuba_enhancement` | before / after / removed for every step; the f-k fan leaves only slanted lines |
-| 5 | Detection | `step_seg_kuba_detection_neg`, `step_seg_own_grouping` | Otsu ≥ 4 σ, oriented opening, components, ridge + sequential RANSAC; one averaged line per vehicle |
+| 5 | Detection | `step_seg_kuba_detection_neg`, `step_seg_own_grouping` | Otsu ≥ 4 σ, components, ridge + sequential RANSAC; one averaged line per vehicle |
 | 6 | Results | `result_seg_*_result` | 13 / 17 / 13 objects with velocities |
 | 7 | Evaluation | `eval_real_summary`, `eval_synthetic_summary` | real thick recall 21/23, precision 0.79; synthetic thick 48/49, \|v\| error 2.9 km/h |
 | 8 | Experiments | `experiments` | every step is needed; better-on-simulator settings lose real lines; Canny + Hough fails |
@@ -57,8 +57,8 @@ Alternatives if time allows:
 - *Otsu with a 4 σ floor*: Otsu adapts to the image; the floor stops it from splitting pure noise
   in a direction without trams. No floor: real precision 0.39; 5 σ / 6 σ lose real thick lines
   (recall 0.83 / 0.57).
-- *Oriented opening (41 px, 9 slopes)*: keeps only elongated structures in the admissible slopes.
-  It is neutral after the f-k filter and the filter bank, but guards against streaks.
+- *No oriented opening*: an opening with line elements was tried and removed - neutral after the
+  f-k filter and the filter bank (they already remove the streaks; the area filter removes specks).
 - *Sequential RANSAC on the ridge*: splits two touching trams; per-column centroids failed there
   (log #16).
 

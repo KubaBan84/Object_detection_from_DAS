@@ -6,7 +6,7 @@ import pytest
 
 from das.config import DetectionParams, EnhancementParams, GroupingParams
 from das.detection import (LineSegment, detect_lines, detect_thick_lines, detection_threshold,
-                           line_structuring_elements, oriented_opening, ridge_along_time,
+                           ridge_along_time,
                            robust_noise_sigma, sequential_ransac, slope_bounds, slope_ok,
                            velocity_to_slope)
 from das.enhancement import enhance
@@ -60,31 +60,6 @@ def test_velocity_to_slope_known_values_and_sign():
     assert float(velocity_to_slope(-50 / 3.6, ROW_DT, COL_DX)) == pytest.approx(-s)
 
 
-def test_line_structuring_elements_length_and_orientation():
-    for s in (0.3, 1.0, -2.0):
-        se = line_structuring_elements(41, np.array([s]))[0]
-        r, c = np.nonzero(se)
-        assert np.hypot(np.ptp(r), np.ptp(c)) == pytest.approx(40, abs=1.5)
-        fit = np.polyfit(r - r.mean(), c - c.mean(), 1)[0]
-        assert fit == pytest.approx(s, rel=0.1)
-
-
-def test_oriented_opening_keeps_slanted_line_removes_specks_and_streaks():
-    mask = _line_image((300, 300), 50, 20, 2, 1.0) > 0.5
-    rng = np.random.default_rng(1)
-    specks = rng.random((300, 300)) > 0.995
-    streak = np.zeros_like(mask)
-    streak[200:203, 0:120] = True                   # horizontal streak (simultaneous event)
-    vertical = np.zeros_like(mask)
-    vertical[:, 280] = True                         # static channel (v = 0)
-    lo, hi = slope_bounds(V_RANGE, +1, ROW_DT, COL_DX)
-    out = oriented_opening(mask | specks | streak | vertical, 31, np.linspace(lo, hi, 9))
-    assert out[mask].mean() > 0.9
-    assert out[specks & ~mask].mean() < 0.05
-    assert out[streak & ~mask].mean() < 0.05
-    assert out[vertical & ~mask].mean() < 0.05
-
-
 def test_ridge_separates_touching_parallel_lines():
     img = _line_image((400, 200), -60, 300, 6, 10) + _line_image((400, 200), -60, 330, 6, 10)
     img += np.random.default_rng(5).normal(0, 0.3, img.shape)   # bumpy flat tops
@@ -124,7 +99,7 @@ def test_two_touching_thick_lines_give_two_candidates():
         assert s.slope * COL_DX / ROW_DT * 3.6 == pytest.approx(-50, rel=0.05)
         assert s.direction == -1 and s.thickness_px > 10
     assert stages["mask"].sum() > 0 and thr >= 4.0
-    assert set(stages) == {"binary", "opened", "ridge", "mask"}
+    assert set(stages) == {"binary", "ridge", "mask"}
     # nothing in pure noise (threshold floor) and nothing of the wrong direction
     assert detect_thick_lines(rng.normal(0, 1, shape), DetectionParams(), ROW_DT, COL_DX, -1,
                               V_RANGE)[0] == []

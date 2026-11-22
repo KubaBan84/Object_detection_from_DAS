@@ -82,7 +82,6 @@ VARIANTS = [
     Variant("ablation", "no f-k fan filter", {"enh.fk_filter": False}),
     Variant("ablation", "no directional filter bank", {"enh.enhancer": "none"}),
     Variant("ablation", "no 4-sigma floor (Otsu only)", {"det.min_sigma": 0.0}),
-    Variant("ablation", "no oriented opening", {"det.open_length_px": 1}),
     Variant("ablation", "one RANSAC line per component", {"det.max_lines": 1}),
     Variant("ablation", "no linking of candidates (duplicate removal only)",
             {"grp.tol_velocity_kmh": 0.0, "grp.tol_velocity_rel": 0.0, "grp.cont_max_gap_m": -1e9}),
@@ -100,7 +99,6 @@ VARIANTS = [
     Variant("sweep", "12 kernel angles", {"enh.n_angles": 12}),
     Variant("sweep", "upsampling x4", {"enh.space_upsample": 4}),
     *[Variant("sweep", f"min. component area {a} px", {"det.min_area_px": a}) for a in (800, 3000)],
-    *[Variant("sweep", f"opening length {n} px", {"det.open_length_px": n}) for n in (21, 81)],
     *[Variant("sweep", f"grouping time tolerance {t:g} s", {"grp.tol_time_s": t}) for t in (1.0, 2.0)],
 ]
 

@@ -34,8 +34,9 @@ uv run python scripts/annotate_real.py --segment seg_kuba --annotator Kuba   # l
 uv run python scripts/run_experiments.py             # Stage 11: ablation, method comparison, sweeps (~5-10 min)
 uv run python scripts/make_report_figures.py         # Stage 12: flowchart + downscaled figures -> report/figures
 uv run python scripts/make_report_figures.py --regenerate   # ... rerun every script above first
-uv run jupyter nbconvert --to notebook --execute --inplace report/report.ipynb   # run the report
-uv run jupyter nbconvert --to html report/report.ipynb                           # -> report/report.html
+uv run jupyter nbconvert --to notebook --execute --inplace report/report_compact.ipynb   # run the report
+uv run jupyter nbconvert --to html report/report_compact.ipynb                           # -> report_compact.html
+uv run jupyter nbconvert --to html --no-input report/report_compact.ipynb                # (code hidden, for the PDF)
 uv run pytest                                        # tests (warnings are errors)
 ```
 
@@ -47,7 +48,11 @@ uv run pytest                                        # tests (warnings are error
   `config` (all parameters)
 - `scripts/` - command-line entry points (above)
 - `tests/` - unit tests
-- `report/` - final report (`report.ipynb` + `report.html`, figures in `report/figures/`)
+- `report/` - the reports, figures in `report/figures/`:
+  - `report_compact.ipynb` / `.html` / `.pdf` - **current, shortened report** (no oriented opening);
+  - `report.ipynb` / `.html` / `.pdf` - the earlier, long report, kept frozen with its outputs. It
+    describes the earlier detection with the oriented opening and cannot be re-executed with the
+    current code. The PDFs are printed from the HTML with the code cells hidden.
 - `docs/` - flowchart, experiments log, references, presentation notes
 - `data/`, `outputs/` - data and generated results (not versioned)
 
@@ -59,7 +64,7 @@ What is handed in (deadline 22.11.2026 23:59) - code + report, **no data**:
 | Path | Content |
 |---|---|
 | `src/das/`, `scripts/`, `tests/` | library (one module per stage), command-line entry points, unit tests |
-| `report/report.ipynb`, `report/report.html` | the report, executed with outputs (the HTML is self-contained) |
+| `report/report_compact.ipynb`, `.html`, `.pdf` | the report, executed with outputs (the HTML is self-contained; the PDF has no code) |
 | `report/figures/` | downscaled figures shown by the notebook |
 | `docs/` | block diagram, experiments log, references (read by the notebook) |
 | `data/README.md`, `data/annotations/manual_labels.json` | data description; our manual labels of the three real segments |

@@ -16,7 +16,7 @@ For every recording ``outputs/figures/pipeline/<name>/`` gets:
   log-ratio image, plus what was removed (common mode, out-of-band part);
 - ``03_enhancement.png``    f-k fan filter (both directions, what it removed, per
   direction) and the directional filter-bank response per direction;
-- ``04_detection_<pos|neg>.png``  threshold -> oriented opening -> components ->
+- ``04_detection_<pos|neg>.png``  threshold -> components ->
   ridge -> RANSAC lines on the response map of one direction;
 - ``05_grouping.png``       candidates -> groups -> one averaged line per vehicle;
 - ``06_result.png``         detected objects with velocities on the raw waterfall
@@ -190,9 +190,8 @@ def figure_detection(job: Job, direction: int, dpi: int) -> None:
     st, thr = res.detections.stages, res.detections.thresholds[dn]
     panels = [("response (Stage 5)", res.enhanced.response[direction], "magma", (0, 8)),
               (f"1 threshold z > {thr:.1f}", st[f"{dn}_binary"], "gray", (0, 1)),
-              ("2 oriented opening", st[f"{dn}_opened"], "gray", (0, 1)),
-              ("3 kept components", st[f"{dn}_mask"], "gray", (0, 1)),
-              ("4 ridge + RANSAC lines", st[f"{dn}_ridge"] & st[f"{dn}_mask"], "gray", (0, 1))]
+              ("2 kept components", st[f"{dn}_mask"], "gray", (0, 1)),
+              ("3 ridge + RANSAC lines", st[f"{dn}_ridge"] & st[f"{dn}_mask"], "gray", (0, 1))]
     fig, axes = plt.subplots(1, len(panels), figsize=(2.7 * len(panels), 8.5), sharey=True,
                              layout="constrained")
     for ax, (name, img, cmap, (lo, hi)) in zip(axes, panels):
